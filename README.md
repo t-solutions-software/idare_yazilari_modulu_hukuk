@@ -1,20 +1,26 @@
 # İdare Yazıları Modülü (.NET 8)
 
-KÖİ/PPP proje şirketlerine **UETS**, **KEP** veya **doğrudan** (elden, posta, e-posta) gelen idare yazılarını
-otomatik analiz eden, cevap sürecini **proje müdürü → sorumlu → hukuk → gönderim** akışıyla yöneten ve süreleri
-hatırlatmalarla takip eden modül.
+KÖİ/PPP proje şirketlerine **UETS**, **KEP**, **e-Yazışma**, **e-posta** veya **elden/posta** gelen idare yazılarını
+kaydeden (gelen/giden evrak defteri), otomatik analiz eden, cevap sürecini
+**proje müdürü havalesi → sorumlu taslağı → birim onayı → hukuk → imza yetkilisi → sayı → gönderim** zinciriyle yöneten,
+süreleri hatırlatma ve eskalasyonla takip eden ve yazıdan operasyon görevi üreten modül.
 
 ## İş akışı
 
 ```mermaid
 stateDiagram-v2
-    [*] --> AtamaBekliyor: Yazı geldi (UETS / KEP / doğrudan)\nkonu + özet + son gün otomatik çıkarılır
-    AtamaBekliyor --> TaslakHazirlaniyor: PM sorumlu atar
-    TaslakHazirlaniyor --> HukukIncelemesinde: Sorumlu taslağı gönderir (hedef: sürenin %50'si)
+    [*] --> AtamaBekliyor: Yazı geldi, gelen evrak no verildi\nkonu + özet + son gün otomatik çıkarılır
+    AtamaBekliyor --> TaslakHazirlaniyor: PM birime ve/veya kişiye havale eder
+    TaslakHazirlaniyor --> BirimOnayinda: Sorumlu taslağı onaya gönderir
+    BirimOnayinda --> HukukIncelemesinde: Birim yöneticisi onaylar (hedef: sürenin %50'si)
+    BirimOnayinda --> RevizyonBekleniyor: Birim iade eder
+    TaslakHazirlaniyor --> HukukIncelemesinde: Birim adımı kapalıysa / gönderen birim yöneticisiyse
     HukukIncelemesinde --> RevizyonBekleniyor: Hukuk revizyon talep eder
-    RevizyonBekleniyor --> HukukIncelemesinde: Sorumlu revize eder
-    HukukIncelemesinde --> HukukOnayladi: Hukuk onaylar / revize ederek onaylar (hedef: %75)
-    HukukOnayladi --> Gonderildi: Cevap idareye gönderilir
+    RevizyonBekleniyor --> BirimOnayinda: Sorumlu revize eder
+    HukukIncelemesinde --> ImzaBekliyor: Hukuk onaylar / revize ederek onaylar (hedef: %75)
+    ImzaBekliyor --> HukukIncelemesinde: İmza yetkilisi iade eder
+    ImzaBekliyor --> GonderimeHazir: İmza yetkilisi imzalar → sayı + giden evrak no
+    GonderimeHazir --> Gonderildi: KEP kancası / elden / UETS ile gönderilir
     Gonderildi --> [*]
 
     TaslakHazirlaniyor --> IstisnaHukukIncelemesinde: "Süresinde cevap verilemiyor" + neden
@@ -25,6 +31,8 @@ stateDiagram-v2
     EkSureYanitiBekleniyor --> TaslakHazirlaniyor: İdare kabul (yeni son gün) / ret (asıl süre)
     IstisnaHukukIncelemesinde --> TaslakHazirlaniyor: Hukuk gerekçeli gecikme yazısı + taahhüt tarihi\n(yeni son gün = taahhüt tarihi)
 ```
+
+Birim onayı ve imza adımları `OnayAkisi` ayarlarıyla kapatılabilir (kapalıysa sayı gönderim anında verilir).
 
 İstisna sonuçlandığında yazı, istisnanın bildirildiği aşamaya (taslak / revizyon / hukuk) geri döner.
 Ek süre kabul edildiğinde veya gecikme bildirildiğinde **%50 / %75 ara tarihleri yeni pencereye göre**
@@ -62,18 +70,24 @@ Ek süre kabul edildiğinde veya gecikme bildirildiğinde **%50 / %75 ara tarihl
 
 ## Roller ve yetkiler
 
-| İşlem | Proje müdürü | Sorumlu (personel) | Hukuk | Yönetici |
-|---|---|---|---|---|
-| Yazıları görme | Kendi projesi | Kendisine atananlar | Tümü | Tümü |
-| Doğrudan yazı girişi | Kendi projesi | – | ✓ | ✓ |
-| Sorumlu atama / değiştirme | ✓ | – | – | ✓ |
-| Taslak kaydet / hukuka gönder | ✓ | ✓ | – | ✓ |
-| Onay / revizyon talebi / revize ederek onay | – | – | ✓ | – |
-| İdareye gönderildi işaretleme | ✓ | ✓ | – | ✓ |
-| "Süresinde cevap verilemiyor" bildirimi | ✓ | ✓ | ✓ (hukuk aşamasında) | ✓ |
-| İstisna kararı (ret / ek süre / gecikme bildirimi) | – | – | ✓ | – |
-| İdarenin ek süre yanıtını kaydetme | ✓ | – | ✓ | ✓ |
-| Proje eşleştirme (eşleşmeyen yazılar) | – | – | – | ✓ |
+| İşlem | Proje müdürü | Sorumlu (personel) | Birim yöneticisi | Hukuk | İmza yetkilisi | Yönetici |
+|---|---|---|---|---|---|---|
+| Yazıları görme | Kendi projesi | Kendisine havale edilenler | Birimine havale edilenler | Tümü | İmza bekleyenler + imzaladıkları | Tümü |
+| Gelen evrak girişi | Kendi projesi | – | – | ✓ | – | ✓ |
+| Havale (birim / kişi) | ✓ | – | Kendi birimi içinde | – | – | ✓ |
+| Taslak kaydet / onaya gönder | ✓ | ✓ | – | – | – | ✓ |
+| Birim onayı / iade | Birim yoksa ✓ | – | ✓ | – | – | – |
+| Hukuk onayı / revizyon / revize ederek onay | – | – | – | ✓ | – | – |
+| İmza (sayı verilir) / iade | – | – | – | – | ✓ | – |
+| İdareye gönderim | ✓ | ✓ | – | – | – | ✓ |
+| "Süresinde cevap verilemiyor" bildirimi | ✓ | ✓ | – | ✓ (hukuk/imza aşamasında) | – | ✓ |
+| İstisna kararı (ret / ek süre / gecikme bildirimi) | – | – | – | ✓ | – | – |
+| İdarenin ek süre yanıtını kaydetme | ✓ | – | – | ✓ | – | ✓ |
+| Yazıdan görev üretme | ✓ | ✓ | ✓ | ✓ | – | ✓ |
+| Kullanıcı / birim / proje tanımı | – | – | – | – | – | ✓ |
+
+Birim yöneticisi ayrı bir rol değildir: `Birimler.YoneticiId` alanında tanımlı kişidir. İmza yetkilisinin
+`ProjeId` alanı boşsa tüm projeleri, doluysa yalnız o projeyi imzalar.
 
 Her işlem yazının **hareket geçmişine** (kim, ne zaman, ne yaptı) yazılır. Eşzamanlı düzenlemeler sürüm numarasıyla
 engellenir (409).
@@ -91,10 +105,45 @@ Durum her değiştiğinde hatırlatma planı yeniden üretilir; geçersiz kalanl
 | Hukuk onayladı | PM + sorumlu | Gönderim bekliyor |
 | Süre istisnası | Hukuk ekibi | İstisna incelemesi bekliyor |
 | Ek süre yanıtı bekleniyor | Hukuk + PM | 2 gün sonra takip · asıl son gün sabahı |
+| Birim onayında | Birim yöneticisi (+ PM) | Onay bekliyor · taslak süresi yaklaşıyor / doldu |
+| İmza bekliyor | İmza yetkilileri | İmza bekliyor · son günden bir gün önce |
+| Gönderime hazır | PM + sorumlu | Gönderim bekliyor · otomatik gönderim hatası |
 | Tüm açık durumlar | PM + sorumlu | Son günden bir gün önce ve son gün sabahı (ek süre/gecikme sonrası "taahhüt edilen tarih") |
+| **Eskalasyon** | Üst yönetim + birim yöneticisi | Son ana `EskalasyonSaat` (48 saat) kala cevap hâlâ gönderilmediyse |
 
 Kanallar: uygulama günlüğü (her zaman), **SMTP e-posta** (`Smtp:Etkin=true`) ve ekrandaki 🔔 bildirim kutusu.
 Yeni kanal (Teams, SMS…) için `IBildirimGonderici` uygulayıp DI'a eklemek yeterli.
+
+## Evrak kaydı, sayı verme ve Word şablonu
+
+* Her gelen yazıya **gelen evrak no** (`GLN-2026-000123`) verilir; giden her yazıya (cevap, ek süre talebi,
+  gecikme bildirimi) **giden evrak no** (`GDN-2026-000045`) ve proje bazında sıralı **sayı** (`SH-01-2026/00012`)
+  verilir. Biçimler `Numaralandirma` ayarındadır; sayaç veritabanında eşzamanlılık güvenli tutulur.
+* Sayı **imza anında** verilir (imza adımı kapalıysa gönderim anında). İmza yetkilisi isterse e-imzalı dosyayı
+  (PDF / .imz) yükler (`OnayAkisi:ImzaliDosyaZorunlu` ile zorunlu yapılabilir).
+* Taslak ve giden yazılar **kurum Word şablonundan** `.docx` olarak üretilir (`Belge:SablonYolu`). Şablonda
+  `{{ProjeAdi}} {{Sayi}} {{Tarih}} {{Muhatap}} {{MuhatapBuyuk}} {{Konu}} {{Ilgi}} {{Metin}} {{ImzaYetkilisi}} {{TaslakIbaresi}}`
+  yer tutucuları kullanılır. Varsayılan şablon `GET /api/yonetim/sablon.docx` ile indirilip kurum antetiyle düzenlenebilir.
+* **Gönderim kancası** (`IGidenYaziGonderici`): `KEP` kanalı seçildiğinde yazı (Word + imzalı dosya ekleriyle)
+  `.eml` olarak KEP giden klasörüne bırakılır (`KepGonderim:GidenKlasor`); KEP istemcisi/entegrasyon servisi
+  e-imzayla gönderir. Alıcı adres, gelen KEP iletisinin gönderen adresidir (ekranda değiştirilebilir). Gönderim
+  hatası kaydedilir, yazı gönderime hazır kalır ve ilgililere hatırlatma gider. e-Yazışma / UETS / KEP sağlayıcı
+  web servisleri için aynı arayüzü uygulayan yeni sınıflar eklenebilir; tanımlı olmayan kanallar "gönderildi" olarak işaretlenir.
+
+## Diğer modüllerle entegrasyon
+
+| Modül | Yöntem |
+|---|---|
+| **Operasyon modülü** (görevler) | Yazıdan üretilen görevler `SourceSystem = "IdareYazilari"`, `SourceKey = {yazı}/{görev}` ile aktarılır (operasyon modülündeki `OpsTask.SourceSystem/SourceKey` tekil index'iyle uyumlu). `Operasyon:Mod = Cekme`: operasyon modülü `GET /api/entegrasyon/operasyon/gorevler` ile alır, `POST .../gorevler/alindi` ile onaylar. `Mod = Http`: bu modül görevleri `Operasyon:Url` adresine POST eder (409 = zaten var, başarılı sayılır), başarısızlar 10 kez yeniden denenir. |
+| **Hukuk / sözleşme modülü** (kart) | Yazılara `SozlesmeReferansi` girilir; kart `GET /api/entegrasyon/sozlesmeler/{referans}/yazilar` ile ilgili yazıları (evrak no, konu, durum, son gün, giden sayı, bağlantı) listeler. |
+| **SharePoint** (doküman deposu) | `Dosyalar:Saglayici = SharePoint` ile ekler ve imzalı dosyalar Microsoft Graph üzerinden doküman kitaplığına (`{KokKlasor}/{yıl}/{yazı}/`) yazılır. Uygulama kaydına `Sites.Selected` (önerilen) veya `Sites.ReadWrite.All` uygulama izni verilmelidir. |
+| **Entra ID** (kimlik) | `hukuk_modulu` ile aynı kurulum: `Auth:Mode = EntraId`, `AzureAd:TenantId/ClientId`. Kullanıcı ilk girişte e-posta (UPN) ile eşleştirilir, Entra nesne kimliği (oid) kaydedilir. Roller bu modülün `Kullanicilar` tablosunda yönetilir (`/api/yonetim/kullanicilar`). Değiştiren API isteklerinde `X-Idare: 1` başlığı zorunludur (CSRF). |
+
+Entegrasyon uçları `X-Api-Anahtari` başlığıyla korunur (`Entegrasyon:ApiAnahtarlari`, ortam değişkeniyle verilmeli).
+
+> **Ortak onay motoru:** Onay zinciri (birim → hukuk → imza) şu an bu modülün durum makinesinde ve `OnayAkisi`
+> ayarlarıyla yapılandırılır. İK modülündeki ApprovalFlow'a bu oturumdan erişilemediği için ona bağlanmadı;
+> erişim sağlandığında onay adımları ApprovalFlow'a taşınabilir (süre hedefleri ve hatırlatmalar bu modülde kalır).
 
 ## Gelen yazı kanalları
 
@@ -102,7 +151,7 @@ Yeni kanal (Teams, SMS…) için `IBildirimGonderici` uygulayıp DI'a eklemek ye
 |---|---|
 | **KEP** | KEP istemcisi / entegrasyon servisi iletileri `veri/gelen/kep` klasörüne `.eml` olarak bırakır. Gönderen, konu, tarih, gövde ve ekler okunur; alıcı KEP adresi `Projeler.KepAdresi` ile projeye eşleştirilir. |
 | **UETS** | UETS entegrasyonu tebligatları `veri/gelen/uets` klasörüne `.json` (normalleştirilmiş paket) veya `.pdf` olarak bırakır. |
-| **Doğrudan** | Ekrandan "+ Yazı Girişi" (metin ve/veya PDF ekleri) ya da `POST /api/yazilar`. |
+| **e-Yazışma / e-posta / elden / posta** | Ekrandan "+ Yazı Girişi" (metin ve/veya PDF ekleri, idare adresi, lokasyon, sözleşme referansı) ya da `POST /api/yazilar`. |
 
 Klasörler `ArkaPlan:ToplamaAraligiSaniye` aralıkla taranır; işlenen dosyalar `islendi/`, hatalılar `hatali/`
 alt klasörüne taşınır. Aynı ileti (`DisReferans`: KEP Message-ID, UETS barkodu) iki kez kaydedilmez.
@@ -143,8 +192,10 @@ Tüm durum geçişleri `IdareYazisi` aggregate'inin metotlarındadır; geçersiz
 dotnet run --project src/IdareYazilari.Api
 ```
 
-Tarayıcıda `http://localhost:5xxx` → ekran, `/swagger` → API. İlk çalıştırmada örnek proje, kullanıcı ve yazılar
-yüklenir (`OrnekVeri: true`). Üst sağdaki kullanıcı seçiciyle roller arasında geçiş yapılabilir.
+Development ortamında `appsettings.Development.json` ile `Auth:Mode = Dev` kullanılır: tarayıcıda
+`http://localhost:5xxx` → ekran, `/swagger` → API. İlk çalıştırmada örnek proje, birim, kullanıcı (PM, personel,
+birim yöneticisi, hukuk, imza yetkilisi, yönetici) ve yazılar yüklenir (`OrnekVeri: true`). Üst sağdaki kullanıcı
+seçiciyle roller arasında geçiş yapılabilir. Entegrasyon uçları için geliştirme anahtarı `gelistirme-anahtari`.
 
 ```bash
 dotnet test
@@ -157,13 +208,21 @@ dotnet test
 | GET | `/api/yazilar?sadeceAcik=true&durum=...&arama=...` | Pano listesi (aciliyet sırasına göre) |
 | GET | `/api/yazilar/{id}` | Detay + kullanıcının yapabileceği işlemler |
 | POST | `/api/yazilar` · `/api/yazilar/dosyali` | Doğrudan yazı girişi (JSON / multipart) |
-| POST | `/api/yazilar/{id}/sorumlu-ata` | `{ sorumluId }` |
-| POST | `/api/yazilar/{id}/taslak` | `{ icerik, hukukaGonder }` |
+| POST | `/api/yazilar/{id}/havale` | `{ birimId, sorumluId }` (kişi boşsa birim yöneticisi) |
+| POST | `/api/yazilar/{id}/taslak` | `{ icerik, onayaGonder }` |
+| POST | `/api/yazilar/{id}/birim-onay` · `birim-iade` | Birim kararı |
 | POST | `/api/yazilar/{id}/hukuk-onay` · `revizyon-talebi` · `revize-et-onayla` | Hukuk kararları |
-| POST | `/api/yazilar/{id}/idareye-gonder` | `{ gidenSayi, kanal }` |
+| POST | `/api/yazilar/{id}/imzala` (multipart, isteğe bağlı imzalı dosya) · `imza-iade` | İmza; sayı verilir |
+| POST | `/api/yazilar/{id}/idareye-gonder` | `{ kanal, aliciAdres }` |
+| GET | `/api/yazilar/{id}/taslak.docx` · `/giden/{gidenId}.docx` | Word belgeleri |
+| POST | `/api/yazilar/{id}/gorevler` | `{ baslik, aciklama, sorumluEposta, lokasyon, termin }` |
+| POST | `/api/yazilar/{id}/istisna-yazisi-gonder` | Bekleyen ek süre / gecikme yazısını gönder |
 | POST | `/api/yazilar/{id}/istisna` | `{ neden, onerilenTarih }` |
 | POST | `/api/yazilar/{id}/istisna-reddet` · `ek-sure-talebi` · `gecikme-bildirimi` | Hukukun istisna kararı |
 | POST | `/api/yazilar/{id}/ek-sure-yaniti` | `{ yanit: "Kabul" \| "Ret", verilenTarih }` |
+| PUT | `/api/yonetim/kullanicilar/{id}` · `birimler/{id}` · `projeler/{id}` | Tanımlar (yönetici) |
+| GET | `/api/entegrasyon/sozlesmeler/{ref}/yazilar` | Sözleşme kartı (API anahtarı) |
+| GET/POST | `/api/entegrasyon/operasyon/gorevler` · `/alindi` | Operasyon görev aktarımı (API anahtarı) |
 | POST | `/api/yazilar/{id}/bilgi-duzelt` | Konu / özet / son gün düzeltme-teyit |
 | GET | `/api/bildirimlerim?gun=7` | Kullanıcıya giden hatırlatmalar |
 
@@ -171,13 +230,17 @@ Tüm işlem uçları isteğe bağlı `surumNo` alır (eşzamanlılık kontrolü)
 
 ## Canlıya geçmeden önce
 
-1. **Kimlik doğrulama:** `GelistirmeKimlikDogrulama` (X-Kullanici-Id başlığı) yalnızca geliştirme içindir.
-   Kurumun AD / Entra ID / JWT altyapısı bağlanmalı; `HttpMevcutKullanici` e-posta talebinden kullanıcıyı eşleştirir.
+1. **Entra ID:** uygulama kaydı (yönlendirme `https://<alan>/signin-oidc`, ID token), `AzureAd:TenantId/ClientId`;
+   kullanıcı/birim/proje tanımlarının `/api/yonetim/*` ile girilmesi. Ters vekil arkasındaysa `App:BehindProxy = true`.
 2. **Veritabanı:** `Veritabani:Saglayici = SqlServer` + bağlantı cümlesi; `EnsureCreated` yerine EF Core migration.
-3. **UETS / KEP:** Sağlayıcıyla entegrasyon yöntemi netleştirilmeli (klasör bırakma, web servisi, IMAP vb.).
-4. **Tatil takvimi:** dini bayramlar ve idari izinler yıllık güncellenmeli.
-5. **Dosya deposu:** `YerelDosyaDeposu` yerine kurumsal EBYS / belge yönetim sistemi.
-6. **Yapay zekâ:** etkinleştirilecekse yazı içeriklerinin dış servise gönderilmesine ilişkin KVKK / gizlilik değerlendirmesi yapılmalı.
+3. **SharePoint:** Graph uygulama izni, `Dosyalar:SharePoint:*` (gizli değer ortam değişkeniyle / Key Vault).
+4. **KEP / UETS / e-Yazışma:** sağlayıcıyla entegrasyon yöntemi (klasör, web servisi) netleştirilmeli; gelen ve
+   giden klasörleri KEP istemcisinin klasörleriyle eşleştirilmeli.
+5. **Word şablonu:** kurum antetli şablon hazırlanıp `Belge:SablonYolu` ile verilmeli.
+6. **Operasyon modülü:** görev alma ucu (`Http`) veya çekme modu için entegrasyon tarafı yazılmalı; API anahtarı paylaşılmalı.
+7. **Hukuk modülü kartı:** sözleşme kartına entegrasyon ucunu çağıran bileşen eklenmeli.
+8. **Tatil takvimi:** dini bayramlar ve idari izinler yıllık güncellenmeli.
+9. **Yapay zekâ:** etkinleştirilecekse KVKK / gizlilik değerlendirmesi yapılmalı.
 
 ## Yeni istisnaların eklenmesi
 

@@ -24,7 +24,7 @@ internal static class Ortak
     {
         var t = teblig ?? An(2026, 11, 10);
         var h = Hesaplayici();
-        return IdareYazisi.Olustur(YaziKaynagi.Kep, "ref-1", Proje, "Bakanlık", "E-1", null, t,
+        return IdareYazisi.Olustur("GLN-TEST-1", YaziKaynagi.Kep, "ref-1", Proje, "Bakanlık", "E-1", null, t,
             "Konu", "Metin", "Özet", AnalizKaynagi.Kural,
             new SonGunSonucu(sonGun ?? new DateOnly(2026, 11, 25), false, "test"), h, t);
     }

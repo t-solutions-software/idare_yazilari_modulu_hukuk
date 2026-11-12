@@ -18,6 +18,7 @@ public class YaziKayitServisi(
     SureHesaplayici hesaplayici,
     HatirlatmaPlanlayici planlayici,
     IMevcutKullanici mevcut,
+    IEvrakNumaratoru numarator,
     ISaat saat,
     ILogger<YaziKayitServisi> log)
 {
@@ -44,14 +45,17 @@ public class YaziKayitServisi(
         var konu = paket.Kaynak == YaziKaynagi.Dogrudan && !string.IsNullOrWhiteSpace(paket.Konu) ? paket.Konu : analiz.Konu;
         var metin = string.IsNullOrWhiteSpace(paket.Metin) ? analiz.CikarilanMetin ?? "" : paket.Metin;
 
+        var evrakNo = await numarator.GelenEvrakNoAsync(saat.Simdi, ct);
         var yazi = IdareYazisi.Olustur(
+            evrakNo,
             paket.Kaynak, paket.DisReferans, projeId,
             paket.GonderenIdare ?? analiz.GonderenIdare ?? "(Gönderen tespit edilemedi)",
             paket.GelenSayi ?? analiz.GelenSayi,
             paket.YaziTarihi ?? analiz.YaziTarihi,
             paket.TebligTarihi, konu, metin, analiz.Ozet,
             paket.CevapSonGunu is null ? analiz.Kaynak : AnalizKaynagi.Manuel,
-            sonGun, hesaplayici, saat.Simdi);
+            sonGun, hesaplayici, saat.Simdi,
+            paket.Lokasyon, paket.SozlesmeReferansi, paket.GonderenAdres);
 
         foreach (var ek in paket.Ekler)
         {
@@ -78,7 +82,7 @@ public class YaziKayitServisi(
                     throw new YetkiHatasi("Yalnızca kendi projenize yazı girebilirsiniz.");
                 projeId = k.ProjeId;
                 break;
-            case KullaniciRolu.Personel:
+            case KullaniciRolu.Personel or KullaniciRolu.ImzaYetkilisi:
                 throw new YetkiHatasi("Yazı girişi proje müdürü, hukuk veya yönetici tarafından yapılabilir.");
         }
         if (projeId is not null && await kullanicilar.ProjeGetirAsync(projeId.Value, ct) is null)
@@ -98,6 +102,9 @@ public class YaziKayitServisi(
             Konu = string.IsNullOrWhiteSpace(giris.Konu) ? null : giris.Konu,
             Metin = giris.Metin ?? "",
             CevapSonGunu = giris.CevapSonGunu,
+            Lokasyon = giris.Lokasyon,
+            SozlesmeReferansi = giris.SozlesmeReferansi,
+            GonderenAdres = giris.GonderenAdres,
             Ekler = ekler,
         }, ct);
 

@@ -18,6 +18,11 @@ public static class OrnekVeri
     public static readonly Guid Hukuk1 = Guid.Parse("22222222-0000-0000-0000-000000000005");
     public static readonly Guid Hukuk2 = Guid.Parse("22222222-0000-0000-0000-000000000006");
     public static readonly Guid Yonetici = Guid.Parse("22222222-0000-0000-0000-000000000007");
+    public static readonly Guid TeknikMudur = Guid.Parse("22222222-0000-0000-0000-000000000008");
+    public static readonly Guid GenelMudur = Guid.Parse("22222222-0000-0000-0000-000000000009");
+    public static readonly Guid TeknikBirim = Guid.Parse("33333333-0000-0000-0000-000000000001");
+    public static readonly Guid IsletmeBirim = Guid.Parse("33333333-0000-0000-0000-000000000002");
+    public static readonly Guid GmHukukBirim = Guid.Parse("33333333-0000-0000-0000-000000000003");
 
     public static async Task YukleAsync(IdareYazilariDbContext db, YaziKayitServisi kayit, ISaat saat, CancellationToken ct = default)
     {
@@ -28,12 +33,18 @@ public static class OrnekVeri
             new Proje { Id = Proje2, Kod = "OT-01", Ad = "Örnek Otoyol KÖİ Projesi", ProjeMuduruId = Pm2, KepAdresi = "otoyol@hs01.kep.tr" });
         db.Kullanicilar.AddRange(
             new Kullanici { Id = Pm1, AdSoyad = "Ayşe Proje (PM - Şehir Hastanesi)", Eposta = "pm1@example.com", Rol = KullaniciRolu.ProjeMuduru, ProjeId = Proje1 },
-            new Kullanici { Id = Personel1, AdSoyad = "Mehmet Teknik (Şehir Hastanesi)", Eposta = "personel1@example.com", Rol = KullaniciRolu.Personel, ProjeId = Proje1 },
-            new Kullanici { Id = Personel2, AdSoyad = "Zeynep İşletme (Şehir Hastanesi)", Eposta = "personel2@example.com", Rol = KullaniciRolu.Personel, ProjeId = Proje1 },
+            new Kullanici { Id = Personel1, AdSoyad = "Mehmet Teknik (Şehir Hastanesi)", Eposta = "personel1@example.com", Rol = KullaniciRolu.Personel, ProjeId = Proje1, BirimId = TeknikBirim },
+            new Kullanici { Id = Personel2, AdSoyad = "Zeynep İşletme (Şehir Hastanesi)", Eposta = "personel2@example.com", Rol = KullaniciRolu.Personel, ProjeId = Proje1, BirimId = IsletmeBirim },
+            new Kullanici { Id = TeknikMudur, AdSoyad = "Selin Teknik Müdür (Şehir Hastanesi)", Eposta = "teknikmudur@example.com", Rol = KullaniciRolu.Personel, ProjeId = Proje1, BirimId = TeknikBirim },
+            new Kullanici { Id = GenelMudur, AdSoyad = "Genel Müdür (İmza Yetkilisi)", Eposta = "genelmudur@example.com", Rol = KullaniciRolu.ImzaYetkilisi },
             new Kullanici { Id = Pm2, AdSoyad = "Can Yol (PM - Otoyol)", Eposta = "pm2@example.com", Rol = KullaniciRolu.ProjeMuduru, ProjeId = Proje2 },
             new Kullanici { Id = Hukuk1, AdSoyad = "Av. Elif Hukuk", Eposta = "hukuk1@example.com", Rol = KullaniciRolu.Hukuk },
             new Kullanici { Id = Hukuk2, AdSoyad = "Av. Burak Hukuk", Eposta = "hukuk2@example.com", Rol = KullaniciRolu.Hukuk },
             new Kullanici { Id = Yonetici, AdSoyad = "Sistem Yöneticisi", Eposta = "yonetici@example.com", Rol = KullaniciRolu.Yonetici });
+        db.Birimler.AddRange(
+            new Birim { Id = TeknikBirim, Kod = "TEK", Ad = "Teknik İşler (Şehir Hastanesi)", ProjeId = Proje1, YoneticiId = TeknikMudur },
+            new Birim { Id = IsletmeBirim, Kod = "ISL", Ad = "İşletme (Şehir Hastanesi)", ProjeId = Proje1, YoneticiId = Pm1 },
+            new Birim { Id = GmHukukBirim, Kod = "GM-HUK", Ad = "Genel Merkez Hukuk", YoneticiId = Hukuk1 });
         await db.SaveChangesAsync(ct);
 
         var simdi = saat.Simdi;
@@ -42,6 +53,9 @@ public static class OrnekVeri
             Kaynak = YaziKaynagi.Kep,
             DisReferans = "ornek-kep-1",
             ProjeKodu = "SH-01",
+            GonderenAdres = "koi@saglik.hs01.kep.tr",
+            SozlesmeReferansi = "SOZ-2024-017",
+            Lokasyon = "Örnek Şehir Hastanesi",
             TebligTarihi = simdi.AddDays(-2),
             Metin = $"""
                 T.C.

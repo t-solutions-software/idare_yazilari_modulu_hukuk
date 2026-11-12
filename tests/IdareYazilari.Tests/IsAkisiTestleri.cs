@@ -25,21 +25,24 @@ public class IsAkisiTestleri
         Assert.Equal(YaziDurumu.TaslakHazirlaniyor, y.Durum);
 
         y.TaslakKaydet("v1", Sorumlu, KullaniciRolu.Personel, t);
-        y.HukukaGonder(Sorumlu, t);
+        y.OnayaGonder(Sorumlu, false, t);
         Assert.Equal(YaziDurumu.HukukIncelemesinde, y.Durum);
 
         y.RevizyonTalepEt(Hukukcu, "madde 12'ye atıf ekleyin", t);
         Assert.Equal(YaziDurumu.RevizyonBekleniyor, y.Durum);
 
         y.TaslakKaydet("v2", Sorumlu, KullaniciRolu.Personel, t);
-        y.HukukaGonder(Sorumlu, t);
-        y.RevizeEtVeOnayla(Hukukcu, "v3 (hukuk)", "küçük düzeltme", t);
-        Assert.Equal(YaziDurumu.HukukOnayladi, y.Durum);
+        y.OnayaGonder(Sorumlu, false, t);
+        y.RevizeEtVeOnayla(Hukukcu, "v3 (hukuk)", "küçük düzeltme", false, t);
+        Assert.Equal(YaziDurumu.GonderimeHazir, y.Durum);
         Assert.Equal(3, y.GuncelTaslak!.VersiyonNo);
         Assert.Equal(KullaniciRolu.Hukuk, y.GuncelTaslak.HazirlayanRol);
         Assert.Equal([HukukKarari.RevizyonTalebi, HukukKarari.RevizeEdilerekOnay], y.HukukIncelemeleri.Select(i => i.Karar));
 
-        y.IdareyeGonder(Pm, "2026/77", "KEP", t);
+        y.CevapSayisiVer("GDN-2026-000001", "SH-01-2026/00001", Pm, t);
+        y.IdareyeGonder(Pm, "KEP", "msg-1", t);
+        Assert.Equal("SH-01-2026/00001", y.GidenSayi);
+        Assert.Equal(GonderimDurumu.Gonderildi, y.GidenYazilar.Single().Durum);
         Assert.Equal(YaziDurumu.Gonderildi, y.Durum);
         Assert.True(y.Kapali);
     }
@@ -58,9 +61,9 @@ public class IsAkisiTestleri
     {
         var y = YeniYazi();
         y.SorumluAta(Sorumlu, Pm, An(2026, 11, 11));
-        Assert.Throws<IsKuraliHatasi>(() => y.HukukaGonder(Sorumlu, An(2026, 11, 11)));
+        Assert.Throws<IsKuraliHatasi>(() => y.OnayaGonder(Sorumlu, false, An(2026, 11, 11)));
         y.TaslakKaydet("v1", Sorumlu, KullaniciRolu.Personel, An(2026, 11, 11));
-        y.HukukaGonder(Sorumlu, An(2026, 11, 11));
+        y.OnayaGonder(Sorumlu, false, An(2026, 11, 11));
         Assert.Throws<IsKuraliHatasi>(() => y.RevizyonTalepEt(Hukukcu, " ", An(2026, 11, 11)));
     }
 
@@ -84,7 +87,7 @@ public class IsAkisiTestleri
         var y = YeniYazi();
         y.SorumluAta(Sorumlu, Pm, An(2026, 11, 11));
         y.SuresindeCevapVerilemezBildir("denetçi raporu bekleniyor", null, Sorumlu, An(2026, 11, 12));
-        y.EkSureTalepEt(Hukukcu, "Ek süre talebimiz...", new DateOnly(2026, 12, 15), "2026/90", null, An(2026, 11, 12, 15));
+        y.EkSureTalepEt(Hukukcu, "Ek süre talebimiz...", new DateOnly(2026, 12, 15), "GDN-1", "2026/90", null, An(2026, 11, 12, 15));
         Assert.Equal(YaziDurumu.EkSureYanitiBekleniyor, y.Durum);
         Assert.Equal(new DateOnly(2026, 11, 25), y.CevapSonGunu); // yanıt gelene kadar asıl süre geçerli
 
@@ -104,7 +107,7 @@ public class IsAkisiTestleri
         var y = YeniYazi();
         y.SorumluAta(Sorumlu, Pm, An(2026, 11, 11));
         y.SuresindeCevapVerilemezBildir("neden", null, Sorumlu, An(2026, 11, 12));
-        y.EkSureTalepEt(Hukukcu, "talep", new DateOnly(2026, 12, 15), null, null, An(2026, 11, 12));
+        y.EkSureTalepEt(Hukukcu, "talep", new DateOnly(2026, 12, 15), "GDN-1", "S-1", null, An(2026, 11, 12));
         y.EkSureYanitiKaydet(EkSureYaniti.Ret, null, Hukukcu, Hesaplayici(), An(2026, 11, 14));
         Assert.Equal(YaziDurumu.TaslakHazirlaniyor, y.Durum);
         Assert.Equal(new DateOnly(2026, 11, 25), y.CevapSonGunu);
@@ -117,11 +120,11 @@ public class IsAkisiTestleri
         var y = YeniYazi();
         y.SorumluAta(Sorumlu, Pm, An(2026, 11, 11));
         y.TaslakKaydet("v1", Sorumlu, KullaniciRolu.Personel, An(2026, 11, 11));
-        y.HukukaGonder(Sorumlu, An(2026, 11, 11));
+        y.OnayaGonder(Sorumlu, false, An(2026, 11, 11));
         y.SuresindeCevapVerilemezBildir("bilirkişi raporu", new DateOnly(2026, 12, 20), Hukukcu, An(2026, 11, 12));
 
         var simdi = An(2026, 11, 13);
-        y.GecikmeBildir(Hukukcu, "Gerekçeli yazı...", new DateOnly(2026, 12, 18), "2026/91", "uygun", Hesaplayici(), simdi);
+        y.GecikmeBildir(Hukukcu, "Gerekçeli yazı...", new DateOnly(2026, 12, 18), "GDN-2", "2026/91", "uygun", Hesaplayici(), simdi);
         y.HatirlatmalariYenile(Planlayici(), simdi);
 
         Assert.Equal(YaziDurumu.HukukIncelemesinde, y.Durum); // bildirildiği aşamaya döner
@@ -140,8 +143,8 @@ public class IsAkisiTestleri
         y.SorumluAta(Sorumlu, Pm, An(2026, 11, 11));
         Assert.Throws<IsKuraliHatasi>(() => y.SuresindeCevapVerilemezBildir("", null, Sorumlu, An(2026, 11, 12)));
         y.SuresindeCevapVerilemezBildir("neden", null, Sorumlu, An(2026, 11, 12));
-        Assert.Throws<IsKuraliHatasi>(() => y.EkSureTalepEt(Hukukcu, "t", new DateOnly(2026, 11, 20), null, null, An(2026, 11, 12)));
-        Assert.Throws<IsKuraliHatasi>(() => y.GecikmeBildir(Hukukcu, "t", new DateOnly(2026, 11, 12), null, null, Hesaplayici(), An(2026, 11, 12)));
+        Assert.Throws<IsKuraliHatasi>(() => y.EkSureTalepEt(Hukukcu, "t", new DateOnly(2026, 11, 20), "G", "S", null, An(2026, 11, 12)));
+        Assert.Throws<IsKuraliHatasi>(() => y.GecikmeBildir(Hukukcu, "t", new DateOnly(2026, 11, 12), "G", "S", null, Hesaplayici(), An(2026, 11, 12)));
     }
 
     [Fact]
@@ -150,7 +153,7 @@ public class IsAkisiTestleri
         var y = YeniYazi();
         y.SorumluAta(Sorumlu, Pm, An(2026, 11, 11));
         y.SuresindeCevapVerilemezBildir("neden", null, Sorumlu, An(2026, 11, 12));
-        y.GecikmeBildir(Hukukcu, "t", new DateOnly(2026, 12, 18), null, null, Hesaplayici(), An(2026, 11, 12));
+        y.GecikmeBildir(Hukukcu, "t", new DateOnly(2026, 12, 18), "G", "S", null, Hesaplayici(), An(2026, 11, 12));
         Assert.Throws<IsKuraliHatasi>(() => y.BilgileriDuzelt(null, null, new DateOnly(2026, 12, 30), Pm, Hesaplayici(), An(2026, 11, 13)));
     }
 }

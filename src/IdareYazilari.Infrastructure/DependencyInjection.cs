@@ -4,7 +4,9 @@ using IdareYazilari.Application.Analiz;
 using IdareYazilari.Application.Services;
 using IdareYazilari.Domain.Services;
 using IdareYazilari.Infrastructure.ArkaPlan;
+using IdareYazilari.Infrastructure.Belgeler;
 using IdareYazilari.Infrastructure.Bildirimler;
+using IdareYazilari.Infrastructure.Entegrasyon;
 using IdareYazilari.Infrastructure.Kaynaklar;
 using IdareYazilari.Infrastructure.Persistence;
 using IdareYazilari.Infrastructure.YapayZeka;
@@ -32,6 +34,7 @@ public static class DependencyInjection
         services.AddSingleton<ITatilTakvimi>(new TurkiyeTatilTakvimi(ekTatiller));
         services.AddSingleton<SureHesaplayici>();
         services.AddSingleton<HatirlatmaPlanlayici>();
+        services.AddSingleton(config.GetSection("OnayAkisi").Get<OnayAkisiAyarlari>() ?? new OnayAkisiAyarlari());
         services.AddSingleton<ISaat, SistemSaati>();
 
         // --- Veritabanı
@@ -44,7 +47,29 @@ public static class DependencyInjection
         });
         services.AddScoped<IYaziDeposu, EfYaziDeposu>();
         services.AddScoped<IKullaniciDeposu, EfKullaniciDeposu>();
-        services.AddSingleton<IDosyaDeposu>(new YerelDosyaDeposu(config["Dosyalar:Klasor"] ?? "veri/ekler"));
+        services.Configure<NumaralandirmaAyarlari>(config.GetSection("Numaralandirma"));
+        services.AddSingleton<IEvrakNumaratoru, EfEvrakNumaratoru>();
+
+        // --- Doküman deposu: Yerel klasör veya SharePoint (Microsoft Graph)
+        if ((config["Dosyalar:Saglayici"] ?? "Yerel").Equals("SharePoint", StringComparison.OrdinalIgnoreCase))
+        {
+            services.Configure<SharePointAyarlari>(config.GetSection("Dosyalar:SharePoint"));
+            services.AddHttpClient<SharePointDosyaDeposu>();
+            services.AddSingleton<IDosyaDeposu>(sp => sp.GetRequiredService<SharePointDosyaDeposu>());
+        }
+        else
+        {
+            services.AddSingleton<IDosyaDeposu>(new YerelDosyaDeposu(config["Dosyalar:Klasor"] ?? "veri/ekler"));
+        }
+
+        // --- Word şablonu, gönderim kancaları, operasyon entegrasyonu
+        services.Configure<BelgeAyarlari>(config.GetSection("Belge"));
+        services.AddSingleton<IBelgeOlusturucu, WordBelgeOlusturucu>();
+        services.Configure<KepGonderimAyarlari>(config.GetSection("KepGonderim"));
+        if (config.GetValue("KepGonderim:Etkin", false))
+            services.AddSingleton<IGidenYaziGonderici, KepGidenKutusuGonderici>();
+        services.Configure<OperasyonAyarlari>(config.GetSection("Operasyon"));
+        services.AddHttpClient<IGorevAktarici, OperasyonGorevAktarici>();
 
         // --- Analiz
         services.AddSingleton<KuralTabanliAnalizci>();
@@ -62,6 +87,9 @@ public static class DependencyInjection
         services.AddScoped<YaziIsAkisiServisi>();
         services.AddScoped<YaziSorguServisi>();
         services.AddScoped<HatirlatmaGonderimServisi>();
+        services.AddScoped<YetkiServisi>();
+        services.AddScoped<BelgeServisi>();
+        services.AddScoped<GorevAktarimServisi>();
 
         // --- Bildirim kanalları
         services.Configure<SmtpAyarlari>(config.GetSection("Smtp"));
@@ -82,6 +110,7 @@ public static class DependencyInjection
             services.AddSingleton<GelenYaziToplamaServisi>();
             services.AddHostedService(sp => sp.GetRequiredService<GelenYaziToplamaServisi>());
             services.AddHostedService<HatirlatmaZamanlayici>();
+            services.AddHostedService<GorevAktarimZamanlayici>();
         }
         return services;
     }

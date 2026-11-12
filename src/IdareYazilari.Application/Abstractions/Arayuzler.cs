@@ -14,12 +14,25 @@ public interface IMevcutKullanici
     Task<Kullanici> GetirAsync(CancellationToken ct = default);
 }
 
+/// <summary>
+/// Kullanıcının görebileceği yazıların kapsamı. Koşullar VEYA ile birleşir; Kapsam null ise tüm yazılar.
+/// </summary>
+public sealed record GorunurlukKapsami(
+    Guid? ProjeId = null,
+    Guid? SorumluId = null,
+    IReadOnlyCollection<Guid>? BirimIdler = null,
+    /// <summary>İmza yetkilisi: imza bekleyen veya kendi imzaladığı yazılar (ImzaProjeId doluysa yalnız o proje).</summary>
+    Guid? ImzaYetkilisiId = null,
+    Guid? ImzaProjeId = null);
+
 public sealed record YaziFiltresi(
     Guid? ProjeId = null,
     Guid? SorumluId = null,
     IReadOnlyCollection<YaziDurumu>? Durumlar = null,
     bool SadeceAcik = false,
-    string? Arama = null);
+    string? Arama = null,
+    string? SozlesmeReferansi = null,
+    GorunurlukKapsami? Kapsam = null);
 
 public interface IYaziDeposu
 {
@@ -30,6 +43,10 @@ public interface IYaziDeposu
     Task<IReadOnlyList<Guid>> HatirlatmasiGelenYazilarAsync(DateTimeOffset simdi, CancellationToken ct = default);
     Task<IReadOnlyList<(Hatirlatma Hatirlatma, IdareYazisi Yazi)>> GonderilenHatirlatmalarAsync(
         DateTimeOffset baslangic, CancellationToken ct = default);
+    /// <summary>Operasyon modülüne aktarılmayı bekleyen görevlerin yazı kimlikleri.</summary>
+    Task<IReadOnlyList<Guid>> AktarilacakGorevYazilariAsync(int azamiDeneme, CancellationToken ct = default);
+    /// <summary>Operasyon modülünün çekme (pull) entegrasyonu için görevler.</summary>
+    Task<IReadOnlyList<YaziGorevi>> GorevleriListeleAsync(AktarimDurumu? durum, CancellationToken ct = default);
     void Ekle(IdareYazisi yazi);
     /// <summary>Değişiklikleri kaydeder; başka bir kullanıcı aynı yazıyı değiştirdiyse <see cref="EszamanlilikHatasi"/> fırlatır.</summary>
     Task KaydetAsync(CancellationToken ct = default);
@@ -42,6 +59,70 @@ public interface IKullaniciDeposu
     Task<Proje?> ProjeGetirAsync(Guid id, CancellationToken ct = default);
     Task<Proje?> ProjeBulAsync(string? kod, string? aliciAdres, CancellationToken ct = default);
     Task<IReadOnlyList<Proje>> ProjeleriListeleAsync(CancellationToken ct = default);
+    Task<Birim?> BirimGetirAsync(Guid id, CancellationToken ct = default);
+    Task<IReadOnlyList<Birim>> BirimleriListeleAsync(Guid? projeId = null, CancellationToken ct = default);
+    Task<Kullanici?> EntraIleBulAsync(string? objectId, string? eposta, CancellationToken ct = default);
+    /// <summary>Yönetim işlemleri (kullanıcı/birim/proje tanımı, Entra eşleştirmesi).</summary>
+    Task KaydetAsync<T>(T varlik, bool yeni, CancellationToken ct = default) where T : class;
+}
+
+/// <summary>Gelen / giden evrak numarası ve giden yazı sayısı üretir (yıllık sıralı, eşzamanlılık güvenli).</summary>
+public interface IEvrakNumaratoru
+{
+    Task<string> GelenEvrakNoAsync(DateTimeOffset tarih, CancellationToken ct = default);
+    Task<(string EvrakNo, string Sayi)> GidenNoAsync(string? projeKodu, DateTimeOffset tarih, CancellationToken ct = default);
+}
+
+public sealed record GidenYaziBelgeModeli(
+    string? ProjeAdi,
+    string? Sayi,
+    DateTimeOffset Tarih,
+    string Muhatap,
+    string Konu,
+    string? Ilgi,
+    string Metin,
+    string? ImzaYetkilisi,
+    bool Taslak);
+
+/// <summary>Giden yazıyı kurum Word şablonundan (.docx) üretir.</summary>
+public interface IBelgeOlusturucu
+{
+    byte[] Olustur(GidenYaziBelgeModeli model);
+}
+
+public sealed record GonderimTalebi(
+    Guid YaziId,
+    GidenYazi Giden,
+    string? GonderenAdres,
+    string? AliciAdres,
+    string Konu,
+    IReadOnlyList<GelenEk> Ekler);
+
+public sealed record GonderimSonucu(bool Basarili, string? DisMesajId, string? Hata);
+
+/// <summary>Giden yazının fiziksel gönderim kancası (KEP, e-Yazışma, UETS...). Kanal adına göre seçilir.</summary>
+public interface IGidenYaziGonderici
+{
+    /// <summary>Kanal adı (ör. "KEP"). Ekrandaki kanal seçimiyle eşleşir.</summary>
+    string Kanal { get; }
+    Task<GonderimSonucu> GonderAsync(GonderimTalebi talep, CancellationToken ct = default);
+}
+
+public sealed record GorevAktarimPaketi(
+    string SourceSystem,
+    string SourceKey,
+    string Title,
+    string? Description,
+    string AssigneeEmail,
+    string? Location,
+    DateOnly? Deadline,
+    string? Reference);
+
+/// <summary>Görevleri operasyon modülüne iletir (HTTP push). Kapalıysa görevler çekme ucundan alınır.</summary>
+public interface IGorevAktarici
+{
+    bool Etkin { get; }
+    Task AktarAsync(GorevAktarimPaketi paket, CancellationToken ct = default);
 }
 
 public sealed class EszamanlilikHatasi() : Exception("Yazı siz çalışırken başka bir kullanıcı tarafından güncellendi. Sayfayı yenileyip tekrar deneyin.");
@@ -72,7 +153,11 @@ public sealed record GelenYaziPaketi
     /// <summary>Yazının geldiği KEP/UETS adresi (projeye eşleştirme için).</summary>
     public string? AliciAdres { get; init; }
     public string? GonderenIdare { get; init; }
+    /// <summary>Gönderen idarenin KEP / e-posta adresi.</summary>
+    public string? GonderenAdres { get; init; }
     public string? GelenSayi { get; init; }
+    public string? Lokasyon { get; init; }
+    public string? SozlesmeReferansi { get; init; }
     public DateOnly? YaziTarihi { get; init; }
     public required DateTimeOffset TebligTarihi { get; init; }
     public string? Konu { get; init; }

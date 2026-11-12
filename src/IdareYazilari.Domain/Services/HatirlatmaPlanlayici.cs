@@ -78,6 +78,9 @@ public class HatirlatmaPlanlayici(SureAyarlari ayarlar)
                     foreach (var h in PmVeSorumlu(HatirlatmaTuru.TaslakSuresiDoldu, y.TaslakSonTarihi,
                                  $"{baslik}: taslak süresi doldu, taslak hâlâ hukuka gönderilmedi."))
                         yield return h;
+                    if (y.BirimId is not null)
+                        yield return new(HatirlatmaTuru.TaslakSuresiDoldu, y.TaslakSonTarihi, AliciTipi.BirimYoneticisi, null,
+                            $"{baslik}: biriminize havale edilen yazının taslak süresi doldu.");
                 }
                 break;
 
@@ -102,10 +105,30 @@ public class HatirlatmaPlanlayici(SureAyarlari ayarlar)
                     $"{baslik}: hukuk inceleme süresi doldu.");
                 break;
 
-            case YaziDurumu.HukukOnayladi:
+            case YaziDurumu.BirimOnayinda:
+                yield return new(HatirlatmaTuru.BirimOnayiBekliyor, y.DurumTarihi, AliciTipi.BirimYoneticisi, null,
+                    $"{baslik}: taslak birim onayınızı bekliyor. Taslağın {y.TaslakSonTarihi:dd.MM.yyyy HH:mm} tarihine kadar hukuka ulaşması gerekiyor.");
+                yield return new(HatirlatmaTuru.BirimOnayiBekliyor, y.TaslakSonTarihi - on, AliciTipi.BirimYoneticisi, null,
+                    $"{baslik}: birim onayı bekleyen taslağın hukuka ulaşma süresi yaklaşıyor.");
+                yield return new(HatirlatmaTuru.TaslakSuresiDoldu, y.TaslakSonTarihi, AliciTipi.ProjeMuduru, null,
+                    $"{baslik}: taslak süresi doldu, taslak birim onayında bekliyor.");
+                break;
+
+            case YaziDurumu.ImzaBekliyor:
+                yield return new(HatirlatmaTuru.ImzaBekliyor, y.DurumTarihi, AliciTipi.ImzaYetkilileri, null,
+                    $"{baslik}: hukuk onaylı cevap imzanızı bekliyor. Cevap son günü {y.CevapSonGunu:dd.MM.yyyy}.");
+                yield return new(HatirlatmaTuru.ImzaBekliyor, sonGunSabahi.AddDays(-1), AliciTipi.ImzaYetkilileri, null,
+                    $"{baslik}: imza bekleyen cevabın son günü yarın ({y.CevapSonGunu:dd.MM.yyyy}).");
+                break;
+
+            case YaziDurumu.GonderimeHazir:
                 foreach (var h in PmVeSorumlu(HatirlatmaTuru.GonderimBekliyor, y.DurumTarihi,
-                             $"{baslik}: hukuk onayı verildi, cevabın {y.CevapSonGunu:dd.MM.yyyy} tarihine kadar idareye gönderilmesi gerekiyor."))
+                             $"{baslik}: onaylar tamamlandı (sayı: {y.GidenSayi ?? "gönderimde verilecek"}), cevabın {y.CevapSonGunu:dd.MM.yyyy} tarihine kadar idareye gönderilmesi gerekiyor."))
                     yield return h;
+                if (y.BekleyenCevap is { Durum: GonderimDurumu.Hata } hatali)
+                    foreach (var h in PmVeSorumlu(HatirlatmaTuru.GonderimHatasi, y.DurumTarihi,
+                                 $"{baslik}: otomatik gönderim başarısız ({hatali.Hata}). Elle gönderip işaretleyin."))
+                        yield return h;
                 break;
 
             case YaziDurumu.IstisnaHukukIncelemesinde:
@@ -127,6 +150,16 @@ public class HatirlatmaPlanlayici(SureAyarlari ayarlar)
         var yaklasiyorTur = y.SureUzatildi ? HatirlatmaTuru.TaahhutEdilenSureYaklasiyor : HatirlatmaTuru.CevapSonGunuYaklasiyor;
         var sonGunTur = y.SureUzatildi ? HatirlatmaTuru.TaahhutEdilenSure : HatirlatmaTuru.CevapSonGunu;
         var etiket = y.SureUzatildi ? "idareye taahhüt edilen cevap tarihi" : "cevap son günü";
+
+        // Eskalasyon: son ana EskalasyonSaat kala hâlâ gönderilmediyse üst yönetim ve birim yöneticisi.
+        var eskalasyon = SureHesaplayici.GunSonu(y.CevapSonGunu) - TimeSpan.FromHours(ayarlar.EskalasyonSaat);
+        if (y.Durum != YaziDurumu.GonderimeHazir || y.BekleyenCevap is { Durum: GonderimDurumu.Hata })
+        {
+            var eskMesaj = $"{baslik}: {etiket} {y.CevapSonGunu:dd.MM.yyyy}; cevap hâlâ gönderilmedi (durum: {y.Durum}). ESKALASYON.";
+            yield return new(HatirlatmaTuru.Eskalasyon, eskalasyon, AliciTipi.UstYonetim, null, eskMesaj);
+            if (y.BirimId is not null)
+                yield return new(HatirlatmaTuru.Eskalasyon, eskalasyon, AliciTipi.BirimYoneticisi, null, eskMesaj);
+        }
 
         foreach (var h in PmVeSorumlu(yaklasiyorTur, sonGunSabahi.AddDays(-1),
                      $"{baslik}: {etiket} yarın ({y.CevapSonGunu:dd.MM.yyyy})."))

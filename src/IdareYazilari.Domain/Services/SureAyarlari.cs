@@ -30,6 +30,9 @@ public class SureAyarlari
     /// <summary>Atama yapılmamış yazılar için proje müdürüne tekrar hatırlatma aralığı (saat).</summary>
     public int AtamaHatirlatmaSaat { get; set; } = 4;
 
+    /// <summary>Cevap son anına bu kadar saat kala cevap hâlâ gönderilmediyse üst yönetime eskalasyon yapılır.</summary>
+    public int EskalasyonSaat { get; set; } = 48;
+
     /// <summary>Türkiye saati (UTC+3, yaz saati uygulaması yok).</summary>
     public static readonly TimeSpan TurkiyeSaatFarki = TimeSpan.FromHours(3);
 }

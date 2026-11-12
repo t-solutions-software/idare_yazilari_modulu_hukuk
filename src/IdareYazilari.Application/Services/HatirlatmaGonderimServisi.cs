@@ -62,6 +62,19 @@ public class HatirlatmaGonderimServisi(
                     return [pm];
                 return (await kullanicilar.ListeleAsync(yazi.ProjeId, KullaniciRolu.ProjeMuduru, ct)).Where(u => u.Aktif).ToList();
 
+            case AliciTipi.BirimYoneticisi:
+                if (yazi.BirimId is { } bid && await kullanicilar.BirimGetirAsync(bid, ct) is { YoneticiId: { } yonId }
+                    && await kullanicilar.GetirAsync(yonId, ct) is { Aktif: true } yon)
+                    return [yon];
+                return await AlicilariCozAsync(new Hatirlatma { AliciTipi = AliciTipi.ProjeMuduru }, yazi, ct);
+
+            case AliciTipi.ImzaYetkilileri:
+                return (await kullanicilar.ListeleAsync(rol: KullaniciRolu.ImzaYetkilisi, ct: ct))
+                    .Where(u => u.Aktif && (u.ProjeId is null || u.ProjeId == yazi.ProjeId)).ToList();
+
+            case AliciTipi.UstYonetim:
+                return (await kullanicilar.ListeleAsync(rol: KullaniciRolu.Yonetici, ct: ct)).Where(u => u.Aktif).ToList();
+
             default:
                 return [];
         }

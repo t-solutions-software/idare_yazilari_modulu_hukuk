@@ -58,7 +58,7 @@ public class HatirlatmaTestleri
         var t = An(2026, 11, 11);
         y.SorumluAta(Sorumlu, Pm, t);
         y.TaslakKaydet("v1", Sorumlu, KullaniciRolu.Personel, t);
-        y.HukukaGonder(Sorumlu, t);
+        y.OnayaGonder(Sorumlu, false, t);
         y.HatirlatmalariYenile(Planlayici(), t);
 
         var hukuk = y.Hatirlatmalar.Where(h => h.Bekliyor && h.AliciTipi == AliciTipi.HukukEkibi).Select(h => h.Tur).ToList();
@@ -75,9 +75,10 @@ public class HatirlatmaTestleri
         var t = An(2026, 11, 11);
         y.SorumluAta(Sorumlu, Pm, t);
         y.TaslakKaydet("v1", Sorumlu, KullaniciRolu.Personel, t);
-        y.HukukaGonder(Sorumlu, t);
-        y.HukukOnayla(Hukukcu, null, t);
+        y.OnayaGonder(Sorumlu, false, t);
+        y.HukukOnayla(Hukukcu, null, false, t);
         y.HatirlatmalariYenile(Planlayici(), t);
+        y.CevapSayisiVer("GDN-1", "S-1", Pm, t);
         y.IdareyeGonder(Pm, null, null, t);
         y.HatirlatmalariYenile(Planlayici(), t);
         Assert.DoesNotContain(y.Hatirlatmalar, h => h.Bekliyor);

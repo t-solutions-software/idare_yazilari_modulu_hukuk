@@ -11,6 +11,7 @@ public class ArkaPlanAyarlari
 {
     public int ToplamaAraligiSaniye { get; set; } = 120;
     public int HatirlatmaAraligiSaniye { get; set; } = 60;
+    public int GorevAktarimAraligiSaniye { get; set; } = 120;
 }
 
 /// <summary>UETS / KEP kaynaklarını periyodik olarak tarar ve yeni yazıları kaydeder.</summary>
@@ -66,6 +67,26 @@ public class HatirlatmaZamanlayici(IServiceScopeFactory kapsam, IOptions<ArkaPla
                 if (adet > 0) log.LogInformation("{Adet} hatırlatma gönderildi", adet);
             }
             catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "Hatırlatma turu başarısız"); }
+        } while (await zamanlayici.WaitForNextTickAsync(ct));
+    }
+}
+
+/// <summary>Yazılardan üretilen görevleri periyodik olarak operasyon modülüne aktarır (Http modunda).</summary>
+public class GorevAktarimZamanlayici(IServiceScopeFactory kapsam, IOptions<ArkaPlanAyarlari> ayar, ILogger<GorevAktarimZamanlayici> log)
+    : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken ct)
+    {
+        using var zamanlayici = new PeriodicTimer(TimeSpan.FromSeconds(ayar.Value.GorevAktarimAraligiSaniye));
+        do
+        {
+            try
+            {
+                using var scope = kapsam.CreateScope();
+                var adet = await scope.ServiceProvider.GetRequiredService<GorevAktarimServisi>().CalistirAsync(ct);
+                if (adet > 0) log.LogInformation("{Adet} görev operasyon modülüne aktarıldı", adet);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "Görev aktarım turu başarısız"); }
         } while (await zamanlayici.WaitForNextTickAsync(ct));
     }
 }

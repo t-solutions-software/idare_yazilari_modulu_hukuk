@@ -17,6 +17,8 @@ public class EfYaziDeposu(IdareYazilariDbContext db) : IYaziDeposu
             .Include(y => y.Hatirlatmalar)
             .Include(y => y.Hareketler)
             .Include(y => y.Ekler)
+            .Include(y => y.GidenYazilar)
+            .Include(y => y.Gorevler)
             .AsSplitQuery()
             .FirstOrDefaultAsync(y => y.Id == id, ct);
 
@@ -26,6 +28,17 @@ public class EfYaziDeposu(IdareYazilariDbContext db) : IYaziDeposu
     public async Task<IReadOnlyList<IdareYazisi>> ListeleAsync(YaziFiltresi f, CancellationToken ct = default)
     {
         var q = db.Yazilar.AsNoTracking().AsQueryable();
+        if (f.Kapsam is { } k)
+        {
+            var birimler = k.BirimIdler?.ToList() ?? [];
+            q = q.Where(y =>
+                (k.ProjeId != null && y.ProjeId == k.ProjeId) ||
+                (k.SorumluId != null && y.SorumluId == k.SorumluId) ||
+                (y.BirimId != null && birimler.Contains(y.BirimId.Value)) ||
+                (k.ImzaYetkilisiId != null && (k.ImzaProjeId == null || y.ProjeId == k.ImzaProjeId) &&
+                    (y.Durum == YaziDurumu.ImzaBekliyor || y.ImzalayanId == k.ImzaYetkilisiId)));
+        }
+        if (!string.IsNullOrWhiteSpace(f.SozlesmeReferansi)) q = q.Where(y => y.SozlesmeReferansi == f.SozlesmeReferansi);
         if (f.ProjeId is { } p) q = q.Where(y => y.ProjeId == p);
         if (f.SorumluId is { } s) q = q.Where(y => y.SorumluId == s);
         if (f.Durumlar is { Count: > 0 } d) q = q.Where(y => d.Contains(y.Durum));
@@ -33,7 +46,9 @@ public class EfYaziDeposu(IdareYazilariDbContext db) : IYaziDeposu
         if (!string.IsNullOrWhiteSpace(f.Arama))
         {
             var a = f.Arama.Trim();
-            q = q.Where(y => y.Konu.Contains(a) || y.GonderenIdare.Contains(a) || (y.GelenSayi != null && y.GelenSayi.Contains(a)) || y.Ozet.Contains(a));
+            q = q.Where(y => y.Konu.Contains(a) || y.GonderenIdare.Contains(a) || (y.GelenSayi != null && y.GelenSayi.Contains(a)) ||
+                             y.Ozet.Contains(a) || y.EvrakNo.Contains(a) || (y.GidenSayi != null && y.GidenSayi.Contains(a)) ||
+                             (y.SozlesmeReferansi != null && y.SozlesmeReferansi.Contains(a)));
         }
         return await q.OrderBy(y => y.CevapSonGunu).Take(1000).ToListAsync(ct);
     }
@@ -51,6 +66,17 @@ public class EfYaziDeposu(IdareYazilariDbContext db) : IYaziDeposu
             .Join(db.Yazilar.AsNoTracking(), h => h.YaziId, y => y.Id, (h, y) => new { h, y })
             .ToListAsync(ct);
         return liste.Select(x => (x.h, x.y)).ToList();
+    }
+
+    public async Task<IReadOnlyList<Guid>> AktarilacakGorevYazilariAsync(int azamiDeneme, CancellationToken ct = default) =>
+        await db.Gorevler.Where(g => g.AktarimDurumu != AktarimDurumu.Aktarildi && g.DenemeSayisi < azamiDeneme)
+            .Select(g => g.YaziId).Distinct().ToListAsync(ct);
+
+    public async Task<IReadOnlyList<YaziGorevi>> GorevleriListeleAsync(AktarimDurumu? durum, CancellationToken ct = default)
+    {
+        var q = db.Gorevler.AsNoTracking().AsQueryable();
+        if (durum is { } d) q = q.Where(g => g.AktarimDurumu == d);
+        return (await q.Take(500).ToListAsync(ct)).OrderBy(g => g.Tarih).ToList();
     }
 
     public void Ekle(IdareYazisi yazi) => db.Yazilar.Add(yazi);
@@ -101,4 +127,32 @@ public class EfKullaniciDeposu(IdareYazilariDbContext db) : IKullaniciDeposu
 
     public async Task<IReadOnlyList<Proje>> ProjeleriListeleAsync(CancellationToken ct = default) =>
         await db.Projeler.AsNoTracking().OrderBy(p => p.Kod).ToListAsync(ct);
+
+    public Task<Birim?> BirimGetirAsync(Guid id, CancellationToken ct = default) =>
+        db.Birimler.AsNoTracking().FirstOrDefaultAsync(b => b.Id == id, ct);
+
+    /// <summary>projeId verilirse o projenin birimleri + genel merkez birimleri; verilmezse tümü.</summary>
+    public async Task<IReadOnlyList<Birim>> BirimleriListeleAsync(Guid? projeId = null, CancellationToken ct = default)
+    {
+        var q = db.Birimler.AsNoTracking().AsQueryable();
+        if (projeId is { } p) q = q.Where(b => b.ProjeId == p || b.ProjeId == null);
+        return await q.OrderBy(b => b.Ad).ToListAsync(ct);
+    }
+
+    public async Task<Kullanici?> EntraIleBulAsync(string? objectId, string? eposta, CancellationToken ct = default)
+    {
+        if (!string.IsNullOrWhiteSpace(objectId) &&
+            await db.Kullanicilar.AsNoTracking().FirstOrDefaultAsync(k => k.EntraObjectId == objectId, ct) is { } k1)
+            return k1;
+        if (string.IsNullOrWhiteSpace(eposta)) return null;
+        var e = eposta.Trim().ToLower();
+        return await db.Kullanicilar.AsNoTracking().FirstOrDefaultAsync(k => k.Eposta.ToLower() == e, ct);
+    }
+
+    public async Task KaydetAsync<T>(T varlik, bool yeni, CancellationToken ct = default) where T : class
+    {
+        if (yeni) db.Set<T>().Add(varlik); else db.Set<T>().Update(varlik);
+        await db.SaveChangesAsync(ct);
+        db.Entry(varlik).State = EntityState.Detached;
+    }
 }

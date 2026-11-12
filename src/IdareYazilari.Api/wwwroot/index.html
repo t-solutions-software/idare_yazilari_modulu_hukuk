@@ -68,6 +68,7 @@
   <button id="yeniBtn" class="ana" style="display:none">+ Yazı Girişi</button>
   <label class="kucuk" style="color:#cbd5e1">Kullanıcı (geliştirme):</label>
   <select id="kullanici"></select>
+  <span id="kullaniciAdi" style="color:#cbd5e1"></span>
 </header>
 <div id="bildirimler"></div>
 
@@ -80,13 +81,15 @@
       <option value="AtamaBekliyor">Sorumlu ataması bekleyen</option>
       <option value="TaslakHazirlaniyor">Taslak hazırlanıyor</option>
       <option value="RevizyonBekleniyor">Revizyon bekleniyor</option>
+      <option value="BirimOnayinda">Birim onayında</option>
       <option value="HukukIncelemesinde">Hukuk incelemesinde</option>
-      <option value="HukukOnayladi">Gönderim bekleyen</option>
+      <option value="ImzaBekliyor">İmza bekleyen</option>
+      <option value="GonderimeHazir">Gönderim bekleyen</option>
       <option value="IstisnaHukukIncelemesinde">Süre istisnası</option>
       <option value="EkSureYanitiBekleniyor">Ek süre yanıtı bekleyen</option>
       <option value="Gonderildi">Gönderilmiş</option>
     </select>
-    <input id="fArama" placeholder="Konu, idare, sayı ara…" style="min-width:260px">
+    <input id="fArama" placeholder="Konu, idare, sayı, evrak no, sözleşme ara…" style="min-width:300px">
     <button id="yenileBtn">Yenile</button>
     <span class="kucuk" id="sayac"></span>
   </div>
@@ -107,10 +110,13 @@
     <h3 style="margin-top:0">Doğrudan gelen yazı girişi</h3>
     <div class="kucuk">Konu, özet ve cevap son günü boş bırakılırsa metinden otomatik çıkarılır.</div>
     <label>Kaynak</label>
-    <select name="kaynak"><option value="Dogrudan">Doğrudan (elden / posta / e-posta)</option><option value="Kep">KEP</option><option value="Uets">UETS</option></select>
+    <select name="kaynak"><option value="Dogrudan">Doğrudan (elden / posta)</option><option value="EPosta">E-posta</option><option value="EYazisma">e-Yazışma</option><option value="Kep">KEP</option><option value="Uets">UETS</option></select>
     <div id="projeAlani"><label>Proje</label><select name="projeId"></select></div>
     <label>Gönderen idare</label><input name="gonderenIdare">
+    <label>İdarenin KEP / e-posta adresi</label><input name="gonderenAdres">
     <label>Gelen sayı</label><input name="gelenSayi">
+    <label>Lokasyon / hastane</label><input name="lokasyon">
+    <label>İlgili sözleşme referansı</label><input name="sozlesmeReferansi" placeholder="ör. SOZ-2024-017">
     <label>Tebliğ tarihi</label><input name="tebligTarihi" type="datetime-local">
     <label>Konu</label><input name="konu">
     <label>Cevap son günü (biliniyorsa)</label><input name="cevapSonGunu" type="date">
@@ -130,19 +136,30 @@ const TZ = { timeZone: "Europe/Istanbul" };
 const tarihSaat = s => s ? new Date(s).toLocaleString("tr-TR", { ...TZ, dateStyle: "short", timeStyle: "short" }) : "–";
 const gun = s => s ? new Date(s + "T12:00:00+03:00").toLocaleDateString("tr-TR", TZ) : "–";
 const DURUM_ETIKET = {
-  AtamaBekliyor: "uyari", TaslakHazirlaniyor: "", RevizyonBekleniyor: "uyari", HukukIncelemesinde: "",
-  HukukOnayladi: "", Gonderildi: "", IstisnaHukukIncelemesinde: "kritik", EkSureYanitiBekleniyor: "kritik"
+  AtamaBekliyor: "uyari", TaslakHazirlaniyor: "", RevizyonBekleniyor: "uyari", BirimOnayinda: "", HukukIncelemesinde: "",
+  ImzaBekliyor: "", GonderimeHazir: "", Gonderildi: "", IstisnaHukukIncelemesinde: "kritik", EkSureYanitiBekleniyor: "kritik"
 };
-const KAYNAK = { Uets: "UETS", Kep: "KEP", Dogrudan: "Doğrudan" };
-let ben = null, kullanicilar = [], projeler = [], yazilar = [], acikYazi = null;
+const KAYNAK = { Uets: "UETS", Kep: "KEP", Dogrudan: "Doğrudan", EYazisma: "e-Yazışma", EPosta: "E-posta" };
+const GIDEN_TUR = { Cevap: "Cevap", EkSureTalebi: "Ek süre talebi", GecikmeBildirimi: "Gecikme bildirimi" };
+const GONDERIM = { Bekliyor: "Gönderim bekliyor", Gonderildi: "Gönderildi", Hata: "Gönderim hatası" };
+const AKTARIM = { Bekliyor: "Aktarım bekliyor", Aktarildi: "Operasyona aktarıldı", Hata: "Aktarım hatası" };
+const KANALLAR = ["KEP", "e-Yazışma", "UETS", "Elden", "Posta", "E-posta"];
+let ortam = { authMode: "Dev", otomatikKanallar: [] }, ben = null, kullanicilar = [], projeler = [], yazilar = [], acikYazi = null;
 
 function kimlik() { try { return localStorage.getItem("kullaniciId"); } catch { return null; } }
 function kimlikKaydet(id) { try { localStorage.setItem("kullaniciId", id); } catch { } }
 
+function kimlikBasliklari() {
+  const b = { "X-Idare": "1" };
+  if (ortam.authMode === "Dev") b["X-Kullanici-Id"] = $("#kullanici").value;
+  return b;
+}
+
 async function api(yol, secenek = {}) {
-  const basliklar = { "X-Kullanici-Id": $("#kullanici").value, ...(secenek.headers || {}) };
+  const basliklar = { ...kimlikBasliklari(), ...(secenek.headers || {}) };
   if (secenek.body && !(secenek.body instanceof FormData)) basliklar["Content-Type"] = "application/json";
   const r = await fetch(yol, { ...secenek, headers: basliklar });
+  if (r.status === 401 && ortam.authMode !== "Dev") { location.reload(); return; }
   if (!r.ok) {
     let detay = r.statusText;
     try { const p = await r.json(); detay = p.detail || p.title || detay; } catch { }
@@ -154,12 +171,18 @@ async function api(yol, secenek = {}) {
 function bildir(m) { const e = $("#mesaj"); e.textContent = m; e.style.display = "block"; clearTimeout(bildir.t); bildir.t = setTimeout(() => e.style.display = "none", 4000); }
 
 async function basla() {
-  kullanicilar = await (await fetch("/api/gelistirme/kullanicilar")).json();
+  ortam = await (await fetch("/api/ortam")).json();
   const sec = $("#kullanici");
-  sec.innerHTML = kullanicilar.map(k => `<option value="${k.id}">${esc(k.adSoyad)} – ${k.rol}</option>`).join("");
-  const kayitli = kimlik();
-  if (kayitli && kullanicilar.some(k => k.id === kayitli)) sec.value = kayitli;
-  sec.onchange = () => { kimlikKaydet(sec.value); detayKapat(); yukle(); };
+  if (ortam.authMode === "Dev") {
+    kullanicilar = await (await fetch("/api/gelistirme/kullanicilar")).json();
+    sec.innerHTML = kullanicilar.map(k => `<option value="${k.id}">${esc(k.adSoyad)} – ${k.rol}</option>`).join("");
+    const kayitli = kimlik();
+    if (kayitli && kullanicilar.some(k => k.id === kayitli)) sec.value = kayitli;
+    sec.onchange = () => { kimlikKaydet(sec.value); detayKapat(); yukle(); };
+  } else {
+    sec.style.display = "none";
+    sec.previousElementSibling.style.display = "none";
+  }
   $("#yenileBtn").onclick = yukle;
   $("#fDurum").onchange = yukle;
   $("#fArama").oninput = () => { clearTimeout(basla.t); basla.t = setTimeout(yukle, 300); };
@@ -175,7 +198,8 @@ async function yukle() {
   try {
     ben = await api("/api/ben");
     projeler = await api("/api/projeler");
-    $("#yeniBtn").style.display = ben.rol === "Personel" ? "none" : "";
+    $("#yeniBtn").style.display = ["Personel", "ImzaYetkilisi"].includes(ben.rol) ? "none" : "";
+    if (ortam.authMode !== "Dev") $("#kullaniciAdi").textContent = ben.adSoyad;
     const d = $("#fDurum").value, a = $("#fArama").value.trim();
     const q = new URLSearchParams();
     if (d === "acik") q.set("sadeceAcik", "true"); else if (d) q.set("durum", d);
@@ -195,8 +219,10 @@ function kartlariCiz() {
   const kartlar = [
     ["Atama bekleyen", say(y => y.durum === "AtamaBekliyor"), "AtamaBekliyor"],
     ["Taslak / revizyon", say(y => y.durum === "TaslakHazirlaniyor" || y.durum === "RevizyonBekleniyor"), "TaslakHazirlaniyor"],
+    ["Birim onayında", say(y => y.durum === "BirimOnayinda"), "BirimOnayinda"],
     ["Hukukta", say(y => y.durum === "HukukIncelemesinde"), "HukukIncelemesinde"],
-    ["Gönderim bekleyen", say(y => y.durum === "HukukOnayladi"), "HukukOnayladi"],
+    ["İmza bekleyen", say(y => y.durum === "ImzaBekliyor"), "ImzaBekliyor"],
+    ["Gönderim bekleyen", say(y => y.durum === "GonderimeHazir"), "GonderimeHazir"],
     ["Süre istisnası", say(y => y.durum === "IstisnaHukukIncelemesinde" || y.durum === "EkSureYanitiBekleniyor"), "IstisnaHukukIncelemesinde"],
     ["Kritik / gecikmiş", say(y => y.aciliyet === "Kritik" || y.aciliyet === "Gecikti"), "acik"],
   ];
@@ -208,16 +234,16 @@ function listeCiz() {
   $("#sayac").textContent = `${yazilar.length} yazı`;
   const simdi = new Date();
   $("#liste").innerHTML = yazilar.map(y => {
-    const tGecti = new Date(y.taslakSonTarihi) < simdi && ["AtamaBekliyor", "TaslakHazirlaniyor"].includes(y.durum);
-    const hGecti = new Date(y.hukukSonTarihi) < simdi && ["AtamaBekliyor", "TaslakHazirlaniyor", "RevizyonBekleniyor", "HukukIncelemesinde"].includes(y.durum);
+    const tGecti = new Date(y.taslakSonTarihi) < simdi && ["AtamaBekliyor", "TaslakHazirlaniyor", "BirimOnayinda"].includes(y.durum);
+    const hGecti = new Date(y.hukukSonTarihi) < simdi && ["AtamaBekliyor", "TaslakHazirlaniyor", "BirimOnayinda", "RevizyonBekleniyor", "HukukIncelemesinde"].includes(y.durum);
     const kalan = y.durum === "Gonderildi" ? "" : y.kalanGun < 0 ? `<span class="gecikti">${-y.kalanGun} gün gecikti</span>` : `${y.kalanGun} gün kaldı`;
     return `<tr class="satir" data-id="${y.id}">
       <td class="ac ${y.aciliyet}" title="${y.aciliyet}"></td>
       <td><b>${esc(y.konu)}</b> ${y.sureTeyitGerekli ? '<span class="etiket uyari">süre teyidi</span>' : ""} ${y.sureUzatildi ? '<span class="etiket">süre uzatıldı</span>' : ""}
           <div class="ozet">${esc(y.ozet.length > 220 ? y.ozet.slice(0, 220) + "…" : y.ozet)}</div></td>
-      <td class="gizle-mobil">${esc(y.gonderenIdare)}<div class="kucuk">${KAYNAK[y.kaynak]} · ${esc(y.gelenSayi || "")}</div><div class="kucuk">${esc(y.projeAdi || "⚠ Proje eşleşmedi")}</div></td>
-      <td><span class="etiket ${DURUM_ETIKET[y.durum]}">${esc(y.durumAdi)}</span></td>
-      <td>${esc(y.sorumluAdi || "–")}</td>
+      <td class="gizle-mobil">${esc(y.gonderenIdare)}<div class="kucuk">${KAYNAK[y.kaynak]} · ${esc(y.gelenSayi || "")}</div><div class="kucuk">${esc(y.evrakNo)} · ${esc(y.projeAdi || "⚠ Proje eşleşmedi")}</div>${y.sozlesmeReferansi ? `<div class="kucuk">Sözleşme: ${esc(y.sozlesmeReferansi)}</div>` : ""}</td>
+      <td><span class="etiket ${DURUM_ETIKET[y.durum]}">${esc(y.durumAdi)}</span>${y.gidenSayi ? `<div class="kucuk">Giden: ${esc(y.gidenSayi)}</div>` : ""}</td>
+      <td>${esc(y.sorumluAdi || "–")}${y.birimAdi ? `<div class="kucuk">${esc(y.birimAdi)}</div>` : ""}</td>
       <td class="gizle-mobil ${tGecti ? "gecikti" : ""}">${tarihSaat(y.taslakSonTarihi)}</td>
       <td class="gizle-mobil ${hGecti ? "gecikti" : ""}">${tarihSaat(y.hukukSonTarihi)}</td>
       <td><b>${gun(y.cevapSonGunu)}</b><div class="kucuk">${kalan}</div></td>
@@ -242,7 +268,8 @@ function detayCiz() {
   $("#detay").innerHTML = `
     <button class="kapat" onclick="detayKapat()">✕</button>
     <h2>${esc(o.konu)}</h2>
-    <div><span class="etiket ${DURUM_ETIKET[o.durum]}">${esc(o.durumAdi)}</span> <span class="kucuk">${KAYNAK[o.kaynak]} · analiz: ${d.analizKaynagi}</span></div>
+    <div><span class="etiket ${DURUM_ETIKET[o.durum]}">${esc(o.durumAdi)}</span> <span class="kucuk">${esc(o.evrakNo)} · ${KAYNAK[o.kaynak]} · analiz: ${d.analizKaynagi}</span></div>
+    <div class="kucuk" style="margin-top:6px">Onay zinciri: ${zincir(d)}</div>
     <div class="zaman">
       <div class="gecti"><b>Tebliğ</b><br>${tarihSaat(o.tebligTarihi)}</div>
       ${asama("Taslak (%50)", o.taslakSonTarihi)}
@@ -256,14 +283,23 @@ function detayCiz() {
       <div>Gönderen idare</div><div>${esc(o.gonderenIdare)}</div>
       <div>Gelen sayı / tarih</div><div>${esc(o.gelenSayi || "–")} / ${gun(d.yaziTarihi)}</div>
       <div>Proje</div><div>${esc(o.projeAdi || "Eşleşmedi")}</div>
-      <div>Sorumlu</div><div>${esc(o.sorumluAdi || "Atanmadı")}</div>
+      <div>Havale</div><div>${esc(o.birimAdi || "–")} / ${esc(o.sorumluAdi || "Atanmadı")}</div>
+      <div>Lokasyon</div><div>${esc(o.lokasyon || "–")}</div>
+      <div>Sözleşme referansı</div><div>${esc(o.sozlesmeReferansi || "–")}</div>
+      <div>İdare adresi (KEP/e-posta)</div><div>${esc(d.gonderenAdres || "–")}</div>
+      ${d.birimOnayTarihi ? `<div>Birim onayı</div><div>${esc(d.birimOnaylayan)} · ${tarihSaat(d.birimOnayTarihi)}</div>` : ""}
+      ${d.imzaTarihi ? `<div>İmza</div><div>${esc(d.imzalayan)} · ${tarihSaat(d.imzaTarihi)}</div>` : ""}
       <div>Süre tespiti</div><div>${esc(d.sureAciklamasi || "–")}</div>
       ${o.sureUzatildi ? `<div>İlk cevap son günü</div><div>${gun(o.ilkCevapSonGunu)}</div>` : ""}
       ${d.gonderimTarihi ? `<div>Gönderim</div><div>${tarihSaat(d.gonderimTarihi)} · ${esc(d.gidenSayi || "")} · ${esc(d.gonderimKanali || "")}</div>` : ""}
     </div>
     <h3>İşlemler</h3>
     <div id="islemler">${islemFormlari(d)}</div>
-    ${d.taslaklar.length ? `<h3>Taslaklar</h3>${d.taslaklar.map(t => `<div class="kucuk">v${t.versiyonNo} · ${esc(t.hazirlayan)} (${t.hazirlayanRol}) · ${tarihSaat(t.tarih)}</div><pre>${esc(t.icerik)}</pre>`).join("")}` : ""}
+    ${d.gidenYazilar.length ? `<h3>Giden evrak</h3><div class="liste">${d.gidenYazilar.map(g => `<div><b>${GIDEN_TUR[g.tur]}</b> · Sayı ${esc(g.sayi)} · ${esc(g.evrakNo)} · <span class="etiket ${g.durum === "Hata" ? "kritik" : g.durum === "Bekliyor" ? "uyari" : ""}">${GONDERIM[g.durum]}</span>
+        <div class="kucuk">${tarihSaat(g.tarih)}${g.imzalayan ? " · imza: " + esc(g.imzalayan) : ""}${g.kanal ? " · " + esc(g.kanal) : ""}${g.gonderimTarihi ? " · gönderim " + tarihSaat(g.gonderimTarihi) : ""}${g.hata ? " · HATA: " + esc(g.hata) : ""}</div>
+        <a href="#" onclick="indir('/api/yazilar/${o.id}/giden/${g.id}.docx','${esc(g.evrakNo)}.docx');return false">Word belgesi</a>${g.imzaliEkId ? ` · <a href="#" onclick="ekIndir('${g.imzaliEkId}','imzali');return false">İmzalı dosya</a>` : ""}</div>`).join("")}</div>` : ""}
+    ${d.gorevler.length ? `<h3>Görevler (operasyon)</h3><div class="liste">${d.gorevler.map(g => `<div><b>${esc(g.baslik)}</b> → ${esc(g.sorumluEposta)}${g.termin ? " · termin " + gun(g.termin) : ""} · <span class="etiket ${g.aktarimDurumu === "Hata" ? "kritik" : g.aktarimDurumu === "Bekliyor" ? "uyari" : ""}">${AKTARIM[g.aktarimDurumu]}</span><div class="kucuk">${esc(g.aciklama || "")}${g.hata ? " · " + esc(g.hata) : ""}</div></div>`).join("")}</div>` : ""}
+    ${d.taslaklar.length ? `<h3>Taslaklar</h3><div><a href="#" onclick="indir('/api/yazilar/${o.id}/taslak.docx','taslak.docx');return false">Güncel taslağı Word olarak indir</a></div>${d.taslaklar.map(t => `<div class="kucuk">v${t.versiyonNo} · ${esc(t.hazirlayan)} (${t.hazirlayanRol}) · ${tarihSaat(t.tarih)}</div><pre>${esc(t.icerik)}</pre>`).join("")}` : ""}
     ${d.hukukIncelemeleri.length ? `<h3>Hukuk incelemeleri</h3><div class="liste">${d.hukukIncelemeleri.map(i => `<div><b>${i.karar}</b> (v${i.taslakVersiyonNo}) · ${esc(i.hukukcu)} · ${tarihSaat(i.tarih)}<div>${esc(i.aciklama || "")}</div></div>`).join("")}</div>` : ""}
     ${d.istisnalar.length ? `<h3>Süre istisnaları</h3><div class="liste">${d.istisnalar.map(i => `<div><b>${i.durum}</b>${i.cozum ? " · " + i.cozum : ""} · ${esc(i.bildiren)} · ${tarihSaat(i.bildirimTarihi)}
         <div>Neden: ${esc(i.neden)}${i.onerilenTarih ? ` (önerilen: ${gun(i.onerilenTarih)})` : ""}</div>
@@ -277,15 +313,38 @@ function detayCiz() {
   $("#detay").style.display = "block";
 }
 
+function zincir(d) {
+  const sira = ["TaslakHazirlaniyor", "BirimOnayinda", "HukukIncelemesinde", "ImzaBekliyor", "GonderimeHazir", "Gonderildi"];
+  const adlar = { TaslakHazirlaniyor: "Taslak", BirimOnayinda: "Birim", HukukIncelemesinde: "Hukuk", ImzaBekliyor: "İmza", GonderimeHazir: "Gönderim", Gonderildi: "Gönderildi" };
+  const adimlar = sira.filter(x => (x !== "BirimOnayinda" || ortam.birimOnayi) && (x !== "ImzaBekliyor" || ortam.imzaYetkilisiOnayi));
+  const durum = d.ozet.durum === "RevizyonBekleniyor" ? "TaslakHazirlaniyor" : d.ozet.durum;
+  const i = adimlar.indexOf(durum);
+  return adimlar.map((x, j) => j === i ? `<b>${adlar[x]}</b>` : j < i ? `✓ ${adlar[x]}` : adlar[x]).join(" → ");
+}
+
+function kanalSecimi(id, adresId, varsayilanAdres) {
+  return `<label>Kanal</label><select id="${id}">${KANALLAR.map(k => `<option>${k}</option>`).join("")}</select>
+    <span class="kucuk">${ortam.otomatikKanallar.length ? "Otomatik gönderim: " + ortam.otomatikKanallar.join(", ") : "Otomatik gönderim kapalı (gönderildi olarak işaretlenir)"}</span>
+    <label>İdarenin KEP / e-posta adresi</label><input id="${adresId}" style="width:100%" value="${esc(varsayilanAdres || "")}">`;
+}
+
 function islemFormlari(d) {
   const i = new Set(d.yapilabilirIslemler), o = d.ozet, f = [];
   const guncelTaslak = d.taslaklar[0]?.icerik || "";
   if (!i.size) return `<div class="kucuk">Bu aşamada sizin için bekleyen işlem yok.</div>`;
-  if (i.has("SorumluAta")) f.push(`<div class="islem"><b>Sorumlu ata</b><label>Proje personeli</label><select id="sorumluSec"><option value="">Yükleniyor…</option></select> <button class="ana" onclick="islem('sorumlu-ata',{sorumluId:$('#sorumluSec').value})">Ata</button></div>`);
-  if (i.has("TaslakKaydet")) f.push(`<div class="islem"><b>Cevap taslağı</b> <span class="kucuk">Taslak son tarihi: ${tarihSaat(o.taslakSonTarihi)}</span>
+  if (i.has("SorumluAta")) f.push(`<div class="islem"><b>Havale</b> <span class="kucuk">Birim seçilip kişi boş bırakılırsa birim yöneticisine havale edilir.</span>
+      <label>Birim</label><select id="birimSec" onchange="sorumlulariYukle()"><option value="">(Birim yok – proje içi)</option></select>
+      <label>Kişi</label><select id="sorumluSec"><option value="">Yükleniyor…</option></select>
+      <div style="margin-top:8px"><button class="ana" onclick="islem('havale',{birimId:$('#birimSec').value||null,sorumluId:$('#sorumluSec').value||null})">Havale et</button></div></div>`);
+  if (i.has("TaslakKaydet")) f.push(`<div class="islem"><b>Cevap taslağı</b> <span class="kucuk">Taslağın hukuka ulaşma son tarihi: ${tarihSaat(o.taslakSonTarihi)}</span>
       <textarea id="taslakMetni" rows="10">${esc(guncelTaslak)}</textarea>
-      <button onclick="islem('taslak',{icerik:$('#taslakMetni').value,hukukaGonder:false})">Kaydet</button>
-      <button class="ana" onclick="islem('taslak',{icerik:$('#taslakMetni').value,hukukaGonder:true})">Kaydet ve hukuka gönder</button></div>`);
+      <button onclick="islem('taslak',{icerik:$('#taslakMetni').value,onayaGonder:false})">Kaydet</button>
+      <button class="ana" onclick="islem('taslak',{icerik:$('#taslakMetni').value,onayaGonder:true})">Kaydet ve onaya gönder</button>
+      ${d.taslaklar.length ? `<button onclick="indir('/api/yazilar/${o.id}/taslak.docx','taslak.docx')">Word önizleme</button>` : ""}</div>`);
+  if (i.has("BirimOnayla")) f.push(`<div class="islem"><b>Birim onayı</b> <span class="kucuk">Taslak v${d.taslaklar[0]?.versiyonNo}</span>
+      <pre>${esc(guncelTaslak)}</pre><label>Açıklama (iadede zorunlu)</label><input id="birimAciklama" style="width:100%">
+      <div style="margin-top:8px;display:flex;gap:6px"><button class="ana" onclick="islem('birim-onay',{aciklama:$('#birimAciklama').value})">Onayla, hukuka gönder</button>
+      <button class="tehlike" onclick="islem('birim-iade',{aciklama:$('#birimAciklama').value})">İade et</button></div></div>`);
   if (i.has("HukukOnayla")) f.push(`<div class="islem"><b>Hukuk incelemesi</b> <span class="kucuk">Hukuk son tarihi: ${tarihSaat(o.hukukSonTarihi)}</span>
       <label>Revize metin (yalnızca "Revize et ve onayla" için)</label><textarea id="revizeMetni" rows="10">${esc(guncelTaslak)}</textarea>
       <label>Açıklama / revizyon talebi</label><input id="hukukAciklama" style="width:100%">
@@ -294,9 +353,16 @@ function islemFormlari(d) {
         <button onclick="islem('revizyon-talebi',{aciklama:$('#hukukAciklama').value})">Revizyon talep et</button>
         <button onclick="islem('revize-et-onayla',{icerik:$('#revizeMetni').value,aciklama:$('#hukukAciklama').value})">Revize et ve onayla</button>
       </div></div>`);
-  if (i.has("IdareyeGonder")) f.push(`<div class="islem"><b>İdareye gönder</b> <span class="kucuk">Hukuk onaylı metin v${d.taslaklar[0]?.versiyonNo}</span>
-      <label>Giden sayı</label><input id="gidenSayi"> <label>Kanal</label><select id="kanal"><option>KEP</option><option>UETS</option><option>Elden</option><option>Posta</option><option>E-posta</option></select>
-      <div style="margin-top:8px"><button class="ana" onclick="islem('idareye-gonder',{gidenSayi:$('#gidenSayi').value,kanal:$('#kanal').value})">Gönderildi olarak işaretle</button></div></div>`);
+  if (i.has("Imzala")) f.push(`<div class="islem"><b>İmza</b> <span class="kucuk">Hukuk onaylı metin v${d.taslaklar[0]?.versiyonNo}. İmzada sayı verilir.</span>
+      <pre>${esc(guncelTaslak)}</pre>
+      <button onclick="indir('/api/yazilar/${o.id}/taslak.docx','taslak.docx')">Word olarak indir (e-imza için)</button>
+      <label>E-imzalı dosya ${ortam.imzaliDosyaZorunlu ? "(zorunlu)" : "(isteğe bağlı)"}</label><input id="imzaliDosya" type="file">
+      <label>İade gerekçesi</label><input id="imzaAciklama" style="width:100%">
+      <div style="margin-top:8px;display:flex;gap:6px"><button class="ana" onclick="imzala()">İmzala ve sayı ver</button>
+      <button class="tehlike" onclick="islem('imza-iade',{aciklama:$('#imzaAciklama').value})">Hukuka iade et</button></div></div>`);
+  if (i.has("IdareyeGonder")) f.push(`<div class="islem"><b>İdareye gönder</b> <span class="kucuk">${o.gidenSayi ? "Sayı: " + esc(o.gidenSayi) : "Sayı gönderimde verilecek"}</span>
+      ${kanalSecimi("kanal", "aliciAdres", d.gonderenAdres)}
+      <div style="margin-top:8px"><button class="ana" onclick="islem('idareye-gonder',{kanal:$('#kanal').value,aliciAdres:$('#aliciAdres').value})">Gönder</button></div></div>`);
   if (i.has("IstisnaBildir")) f.push(`<details class="islem"><summary><b>Süresinde cevap verilemiyor</b></summary>
       <label>Neden (zorunlu)</label><textarea id="istisnaNeden" rows="3"></textarea>
       <label>Cevap verilebilecek tarih önerisi</label><input id="istisnaTarih" type="date">
@@ -308,32 +374,59 @@ function islemFormlari(d) {
       <label>Hukuk açıklaması</label><input id="istAciklama" style="width:100%">
       <label>İdareye yazılacak metin (ek süre talebi veya gecikme gerekçesi)</label><textarea id="istMetin" rows="6"></textarea>
       <label>Tarih (talep edilen ek süre / cevabın verileceği taahhüt tarihi)</label><input id="istTarih" type="date" value="${ist?.onerilenTarih || ""}">
-      <label>Giden sayı</label><input id="istSayi">
+      ${kanalSecimi("istKanal", "istAdres", d.gonderenAdres)}
+      <div class="kucuk">Sayı otomatik verilir. Kanalı boş bırakmak için "Elden" seçip sonradan gönderebilirsiniz.</div>
       <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
-        <button class="ana" onclick="islem('ek-sure-talebi',{talepYazisiMetni:$('#istMetin').value,talepEdilenTarih:$('#istTarih').value,gidenSayi:$('#istSayi').value,aciklama:$('#istAciklama').value})">Ek süre talep et</button>
-        <button class="ana" onclick="islem('gecikme-bildirimi',{gerekceYazisiMetni:$('#istMetin').value,taahhutTarihi:$('#istTarih').value,gidenSayi:$('#istSayi').value,aciklama:$('#istAciklama').value})">Gerekçeli gecikme bildir</button>
+        <button class="ana" onclick="islem('ek-sure-talebi',{talepYazisiMetni:$('#istMetin').value,talepEdilenTarih:$('#istTarih').value,aciklama:$('#istAciklama').value,kanal:$('#istKanal').value,aliciAdres:$('#istAdres').value})">Ek süre talep et</button>
+        <button class="ana" onclick="islem('gecikme-bildirimi',{gerekceYazisiMetni:$('#istMetin').value,taahhutTarihi:$('#istTarih').value,aciklama:$('#istAciklama').value,kanal:$('#istKanal').value,aliciAdres:$('#istAdres').value})">Gerekçeli gecikme bildir</button>
         <button class="tehlike" onclick="islem('istisna-reddet',{aciklama:$('#istAciklama').value})">Nedeni uygun bulma</button>
       </div></div>`);
+  }
+  if (i.has("IstisnaYazisiGonder")) {
+    const bekleyen = d.gidenYazilar.filter(g => g.tur !== "Cevap" && g.durum !== "Gonderildi");
+    f.push(`<div class="islem"><b>Gönderilmemiş istisna yazısı</b>
+      <select id="istGiden">${bekleyen.map(g => `<option value="${g.id}">${GIDEN_TUR[g.tur]} – ${esc(g.sayi)}</option>`).join("")}</select>
+      ${kanalSecimi("igKanal", "igAdres", d.gonderenAdres)}
+      <div style="margin-top:8px"><button class="ana" onclick="islem('istisna-yazisi-gonder',{gidenYaziId:$('#istGiden').value,kanal:$('#igKanal').value,aliciAdres:$('#igAdres').value})">Gönder</button></div></div>`);
   }
   if (i.has("EkSureYanitiKaydet")) f.push(`<div class="islem"><b>İdarenin ek süre yanıtı</b>
       <label>İdarenin verdiği tarih (kabulde)</label><input id="ekSureTarih" type="date">
       <div style="margin-top:8px;display:flex;gap:6px"><button class="ana" onclick="islem('ek-sure-yaniti',{yanit:'Kabul',verilenTarih:$('#ekSureTarih').value||null})">Kabul edildi</button>
       <button class="tehlike" onclick="islem('ek-sure-yaniti',{yanit:'Ret'})">Reddedildi</button></div></div>`);
+  if (i.has("GorevEkle")) f.push(`<details class="islem"><summary><b>Yazıdan görev oluştur (operasyon modülü)</b></summary>
+      <label>Görev</label><input id="gBaslik" style="width:100%">
+      <label>Açıklama</label><textarea id="gAciklama" rows="2"></textarea>
+      <label>Sorumlu e-posta</label><input id="gEposta" style="width:100%">
+      <label>Lokasyon</label><input id="gLokasyon" value="${esc(o.lokasyon || "")}">
+      <label>Termin</label><input id="gTermin" type="date">
+      <div style="margin-top:8px"><button class="ana" onclick="islem('gorevler',{baslik:$('#gBaslik').value,aciklama:$('#gAciklama').value,sorumluEposta:$('#gEposta').value,lokasyon:$('#gLokasyon').value,termin:$('#gTermin').value||null})">Görev oluştur</button></div></details>`);
   if (i.has("BilgiDuzelt")) f.push(`<details class="islem" ${o.sureTeyitGerekli ? "open" : ""}><summary><b>Bilgileri düzelt / teyit et</b></summary>
-      <label>Konu</label><input id="dKonu" style="width:100%" value="${esc(o.konu)}">
-      <label>Özet</label><textarea id="dOzet" rows="3">${esc(o.ozet)}</textarea>
-      <label>Cevap son günü</label><input id="dSonGun" type="date" value="${o.cevapSonGunu}" ${o.sureUzatildi ? "disabled" : ""}>
-      <div style="margin-top:8px"><button class="ana" onclick="islem('bilgi-duzelt',{konu:$('#dKonu').value,ozet:$('#dOzet').value,cevapSonGunu:$('#dSonGun').disabled?null:$('#dSonGun').value})">Kaydet / teyit et</button></div></details>`);
+      <label>Konu</label><input id="dKonu" style="width:100%" value="${esc(o.konu)}" ${o.durum === "Gonderildi" ? "disabled" : ""}>
+      <label>Özet</label><textarea id="dOzet" rows="3" ${o.durum === "Gonderildi" ? "disabled" : ""}>${esc(o.ozet)}</textarea>
+      <label>Cevap son günü</label><input id="dSonGun" type="date" value="${o.cevapSonGunu}" ${o.sureUzatildi || o.durum === "Gonderildi" ? "disabled" : ""}>
+      <label>Sözleşme referansı</label><input id="dSozlesme" value="${esc(o.sozlesmeReferansi || "")}">
+      <label>Lokasyon</label><input id="dLokasyon" value="${esc(o.lokasyon || "")}">
+      <div style="margin-top:8px"><button class="ana" onclick="islem('bilgi-duzelt',{konu:$('#dKonu').disabled?null:$('#dKonu').value,ozet:$('#dOzet').disabled?null:$('#dOzet').value,cevapSonGunu:$('#dSonGun').disabled?null:$('#dSonGun').value,sozlesmeReferansi:$('#dSozlesme').value,lokasyon:$('#dLokasyon').value})">Kaydet / teyit et</button></div></details>`);
   if (i.has("ProjeAta")) f.push(`<div class="islem"><b>Proje eşleştir</b> <select id="projeSec">${projeler.map(p => `<option value="${p.id}">${esc(p.kod)} – ${esc(p.ad)}</option>`).join("")}</select> <button class="ana" onclick="islem('proje-ata',{projeId:$('#projeSec').value})">Kaydet</button></div>`);
-  if (i.has("SorumluAta")) setTimeout(sorumlulariYukle, 0);
+  if (i.has("SorumluAta")) setTimeout(birimleriYukle, 0);
   return f.join("");
 }
 
+async function birimleriYukle() {
+  const o = acikYazi.ozet, sec = $("#birimSec");
+  if (!sec) return;
+  const birimler = await api(`/api/birimler?projeId=${o.projeId}`);
+  sec.innerHTML = `<option value="">(Birim yok – proje içi)</option>` + birimler.map(b => `<option value="${b.id}" ${b.id === o.birimId ? "selected" : ""}>${esc(b.ad)}</option>`).join("");
+  await sorumlulariYukle();
+}
+
 async function sorumlulariYukle() {
-  const o = acikYazi.ozet;
-  const liste = (await api(`/api/kullanicilar?projeId=${o.projeId}`)).filter(k => k.rol === "Personel" || k.rol === "ProjeMuduru");
+  const o = acikYazi.ozet, birim = $("#birimSec")?.value;
+  const liste = (await api(birim ? `/api/kullanicilar?birimId=${birim}` : `/api/kullanicilar?projeId=${o.projeId}`))
+    .filter(k => k.rol === "Personel" || k.rol === "ProjeMuduru");
   const sec = $("#sorumluSec");
-  if (sec) sec.innerHTML = liste.map(k => `<option value="${k.id}" ${k.id === o.sorumluId ? "selected" : ""}>${esc(k.adSoyad)}</option>`).join("");
+  if (sec) sec.innerHTML = (birim ? `<option value="">(Birim yöneticisi)</option>` : "") +
+    liste.map(k => `<option value="${k.id}" ${k.id === o.sorumluId ? "selected" : ""}>${esc(k.adSoyad)}</option>`).join("");
 }
 
 async function islem(yol, govde) {
@@ -345,12 +438,27 @@ async function islem(yol, govde) {
   } catch (e) { bildir(e.message); }
 }
 
-async function ekIndir(ekId, ad) {
-  const r = await fetch(`/api/yazilar/${acikYazi.ozet.id}/ekler/${ekId}`, { headers: { "X-Kullanici-Id": $("#kullanici").value } });
-  if (!r.ok) return bildir("Ek indirilemedi.");
+async function imzala() {
+  const fd = new FormData();
+  fd.append("surumNo", acikYazi.ozet.surumNo);
+  const dosya = $("#imzaliDosya").files[0];
+  if (dosya) fd.append("dosya", dosya);
+  try {
+    acikYazi = await api(`/api/yazilar/${acikYazi.ozet.id}/imzala`, { method: "POST", body: fd });
+    detayCiz();
+    bildir("İmzalandı, sayı verildi.");
+    yukle();
+  } catch (e) { bildir(e.message); }
+}
+
+async function indir(yol, ad) {
+  const r = await fetch(yol, { headers: kimlikBasliklari() });
+  if (!r.ok) return bildir("Dosya indirilemedi.");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(await r.blob()); a.download = ad; a.click();
 }
+
+function ekIndir(ekId, ad) { return indir(`/api/yazilar/${acikYazi.ozet.id}/ekler/${ekId}`, ad); }
 
 function bildirimleriGoster() { const b = $("#bildirimler"); b.style.display = b.style.display === "block" ? "none" : "block"; }
 
@@ -366,7 +474,7 @@ async function yeniYaziKaydet(ev) {
   if (ev.submitter?.value !== "kaydet") return;
   ev.preventDefault();
   const f = ev.target, fd = new FormData();
-  for (const ad of ["kaynak", "projeId", "gonderenIdare", "gelenSayi", "konu", "cevapSonGunu", "metin"]) if (f[ad].value) fd.append(ad, f[ad].value);
+  for (const ad of ["kaynak", "projeId", "gonderenIdare", "gonderenAdres", "gelenSayi", "lokasyon", "sozlesmeReferansi", "konu", "cevapSonGunu", "metin"]) if (f[ad].value) fd.append(ad, f[ad].value);
   if (f.tebligTarihi.value) fd.append("tebligTarihi", new Date(f.tebligTarihi.value).toISOString());
   for (const d of f.dosyalar.files) fd.append("dosyalar", d);
   try {

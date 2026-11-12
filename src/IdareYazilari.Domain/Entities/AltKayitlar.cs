@@ -92,3 +92,50 @@ public class Ek
     /// <summary>Dosya deposundaki anahtar / yol.</summary>
     public string DepoAnahtari { get; set; } = "";
 }
+
+/// <summary>Giden evrak: cevap yazısı, ek süre talebi veya gecikme bildirimi. Sayı ve evrak numarası burada tutulur.</summary>
+public class GidenYazi
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid YaziId { get; set; }
+    public GidenYaziTuru Tur { get; set; }
+    /// <summary>Giden evrak kayıt numarası (ör. GDN-2026-000045).</summary>
+    public string EvrakNo { get; set; } = "";
+    /// <summary>Yazıya verilen resmi sayı.</summary>
+    public string Sayi { get; set; } = "";
+    public DateTimeOffset Tarih { get; set; }
+    public string Konu { get; set; } = "";
+    public string Icerik { get; set; } = "";
+    public Guid HazirlayanId { get; set; }
+    public Guid? ImzalayanId { get; set; }
+    public DateTimeOffset? ImzaTarihi { get; set; }
+    /// <summary>İmzalı dosya (e-imzalı PDF / .imz) eki.</summary>
+    public Guid? ImzaliEkId { get; set; }
+    public string? Kanal { get; set; }
+    public GonderimDurumu Durum { get; set; } = GonderimDurumu.Bekliyor;
+    public DateTimeOffset? GonderimTarihi { get; set; }
+    /// <summary>KEP ileti kimliği / UETS barkodu vb.</summary>
+    public string? DisMesajId { get; set; }
+    public string? Hata { get; set; }
+}
+
+/// <summary>Yazıdan üretilen ve operasyon modülüne aktarılan görev.</summary>
+public class YaziGorevi
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid YaziId { get; set; }
+    public string Baslik { get; set; } = "";
+    public string? Aciklama { get; set; }
+    /// <summary>Operasyon modülündeki sorumlu (e-posta ile eşleştirilir).</summary>
+    public string SorumluEposta { get; set; } = "";
+    public string? Lokasyon { get; set; }
+    public DateOnly? Termin { get; set; }
+    public Guid OlusturanId { get; set; }
+    public DateTimeOffset Tarih { get; set; }
+    /// <summary>Operasyon modülündeki Task.SourceKey karşılığı (SourceSystem = "IdareYazilari").</summary>
+    public string DisAnahtar { get; set; } = "";
+    public AktarimDurumu AktarimDurumu { get; set; } = AktarimDurumu.Bekliyor;
+    public DateTimeOffset? AktarimTarihi { get; set; }
+    public int DenemeSayisi { get; set; }
+    public string? Hata { get; set; }
+}
