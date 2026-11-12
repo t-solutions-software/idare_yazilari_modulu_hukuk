@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>İdare Yazıları</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #fff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --primary: #1f5eff; --ok: #12805c; --warn: #b54708; --crit: #c4320a; --late: #912018; --closed: #98a2b3;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; gap: 12px; align-items: center; padding: 10px 20px; background: #101828; color: #fff; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0 auto 0 0; font-weight: 600; }
+  header select, header button { font: inherit; }
+  main { padding: 16px 20px; max-width: 1500px; margin: 0 auto; }
+  .kartlar { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .kart { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; cursor: pointer; }
+  .kart b { display: block; font-size: 22px; }
+  .kart span { color: var(--muted); font-size: 12px; }
+  .araclar { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+  input, select, textarea, button { font: inherit; }
+  input, select, textarea { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; background: #fff; }
+  textarea { width: 100%; min-height: 90px; }
+  button { border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button.ana { background: var(--primary); border-color: var(--primary); color: #fff; }
+  button.tehlike { color: var(--crit); border-color: #f4b6a6; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f9fafb; font-weight: 600; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  tr.satir { cursor: pointer; }
+  tr.satir:hover { background: #f5f8ff; }
+  td.ac { width: 6px; padding: 0; }
+  .Normal { background: var(--ok); } .Uyari { background: #f79009; } .Kritik { background: var(--crit); } .Gecikti { background: var(--late); } .Kapandi { background: var(--closed); }
+  .etiket { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; background: #eef2ff; color: #3538cd; white-space: nowrap; }
+  .etiket.uyari { background: #fffaeb; color: var(--warn); }
+  .etiket.kritik { background: #fef3f2; color: var(--crit); }
+  .kucuk { font-size: 12px; color: var(--muted); }
+  .ozet { color: #344054; font-size: 13px; max-width: 520px; }
+  .gecikti { color: var(--late); font-weight: 600; }
+  #detay { position: fixed; top: 0; right: 0; width: min(760px, 100%); height: 100%; background: #fff; box-shadow: -8px 0 24px rgba(16,24,40,.15); overflow-y: auto; padding: 18px 22px 40px; display: none; z-index: 10; }
+  #detay h2 { margin: 0 30px 4px 0; font-size: 18px; }
+  #detay h3 { font-size: 14px; margin: 20px 0 8px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .kapat { position: absolute; right: 16px; top: 14px; }
+  .izgara { display: grid; grid-template-columns: 170px 1fr; gap: 4px 12px; }
+  .izgara div:nth-child(odd) { color: var(--muted); }
+  .zaman { display: flex; gap: 0; margin: 12px 0; }
+  .zaman div { flex: 1; border-top: 4px solid var(--line); padding-top: 4px; font-size: 12px; }
+  .zaman div.gecti { border-color: var(--primary); }
+  .zaman div.asildi { border-color: var(--crit); }
+  .islem { background: #f9fafb; border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .islem label { display: block; font-size: 12px; color: var(--muted); margin: 6px 0 2px; }
+  .liste > div { border-bottom: 1px dashed var(--line); padding: 6px 0; }
+  pre { white-space: pre-wrap; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; background: #f9fafb; padding: 10px; border-radius: 6px; max-height: 320px; overflow: auto; }
+  #mesaj { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #101828; color: #fff; padding: 8px 16px; border-radius: 6px; display: none; z-index: 20; }
+  #bildirimler { position: absolute; right: 20px; top: 52px; width: 420px; max-height: 60vh; overflow: auto; background: #fff; color: var(--text); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(16,24,40,.15); display: none; z-index: 15; padding: 8px 12px; }
+  dialog { border: 1px solid var(--line); border-radius: 10px; width: min(640px, 95%); }
+  dialog label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 2px; }
+  dialog input, dialog select { width: 100%; }
+  @media (max-width: 800px) { .gizle-mobil { display: none; } main { padding: 12px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>İdare Yazıları Takip</h1>
+  <button id="bildirimBtn" style="color:#101828">🔔 <span id="bildirimSayi">0</span></button>
+  <button id="yeniBtn" class="ana" style="display:none">+ Yazı Girişi</button>
+  <label class="kucuk" style="color:#cbd5e1">Kullanıcı (geliştirme):</label>
+  <select id="kullanici"></select>
+</header>
+<div id="bildirimler"></div>
+
+<main>
+  <div class="kartlar" id="kartlar"></div>
+  <div class="araclar">
+    <select id="fDurum">
+      <option value="acik">Açık yazılar</option>
+      <option value="">Tümü</option>
+      <option value="AtamaBekliyor">Sorumlu ataması bekleyen</option>
+      <option value="TaslakHazirlaniyor">Taslak hazırlanıyor</option>
+      <option value="RevizyonBekleniyor">Revizyon bekleniyor</option>
+      <option value="HukukIncelemesinde">Hukuk incelemesinde</option>
+      <option value="HukukOnayladi">Gönderim bekleyen</option>
+      <option value="IstisnaHukukIncelemesinde">Süre istisnası</option>
+      <option value="EkSureYanitiBekleniyor">Ek süre yanıtı bekleyen</option>
+      <option value="Gonderildi">Gönderilmiş</option>
+    </select>
+    <input id="fArama" placeholder="Konu, idare, sayı ara…" style="min-width:260px">
+    <button id="yenileBtn">Yenile</button>
+    <span class="kucuk" id="sayac"></span>
+  </div>
+  <table>
+    <thead><tr>
+      <th></th><th>Konu / Özet</th><th class="gizle-mobil">İdare / Proje</th><th>Durum</th><th>Sorumlu</th>
+      <th class="gizle-mobil">Taslak (%50)</th><th class="gizle-mobil">Hukuk (%75)</th><th>Cevap son günü</th>
+    </tr></thead>
+    <tbody id="liste"></tbody>
+  </table>
+</main>
+
+<aside id="detay"></aside>
+<div id="mesaj"></div>
+
+<dialog id="yeniDialog">
+  <form id="yeniForm" method="dialog">
+    <h3 style="margin-top:0">Doğrudan gelen yazı girişi</h3>
+    <div class="kucuk">Konu, özet ve cevap son günü boş bırakılırsa metinden otomatik çıkarılır.</div>
+    <label>Kaynak</label>
+    <select name="kaynak"><option value="Dogrudan">Doğrudan (elden / posta / e-posta)</option><option value="Kep">KEP</option><option value="Uets">UETS</option></select>
+    <div id="projeAlani"><label>Proje</label><select name="projeId"></select></div>
+    <label>Gönderen idare</label><input name="gonderenIdare">
+    <label>Gelen sayı</label><input name="gelenSayi">
+    <label>Tebliğ tarihi</label><input name="tebligTarihi" type="datetime-local">
+    <label>Konu</label><input name="konu">
+    <label>Cevap son günü (biliniyorsa)</label><input name="cevapSonGunu" type="date">
+    <label>Yazı metni</label><textarea name="metin" rows="8"></textarea>
+    <label>Ek dosyalar (PDF vb.)</label><input name="dosyalar" type="file" multiple>
+    <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+      <button value="iptal" formnovalidate>Vazgeç</button>
+      <button class="ana" value="kaydet">Kaydet</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => (s ?? "").toString().replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const TZ = { timeZone: "Europe/Istanbul" };
+const tarihSaat = s => s ? new Date(s).toLocaleString("tr-TR", { ...TZ, dateStyle: "short", timeStyle: "short" }) : "–";
+const gun = s => s ? new Date(s + "T12:00:00+03:00").toLocaleDateString("tr-TR", TZ) : "–";
+const DURUM_ETIKET = {
+  AtamaBekliyor: "uyari", TaslakHazirlaniyor: "", RevizyonBekleniyor: "uyari", HukukIncelemesinde: "",
+  HukukOnayladi: "", Gonderildi: "", IstisnaHukukIncelemesinde: "kritik", EkSureYanitiBekleniyor: "kritik"
+};
+const KAYNAK = { Uets: "UETS", Kep: "KEP", Dogrudan: "Doğrudan" };
+let ben = null, kullanicilar = [], projeler = [], yazilar = [], acikYazi = null;
+
+function kimlik() { try { return localStorage.getItem("kullaniciId"); } catch { return null; } }
+function kimlikKaydet(id) { try { localStorage.setItem("kullaniciId", id); } catch { } }
+
+async function api(yol, secenek = {}) {
+  const basliklar = { "X-Kullanici-Id": $("#kullanici").value, ...(secenek.headers || {}) };
+  if (secenek.body && !(secenek.body instanceof FormData)) basliklar["Content-Type"] = "application/json";
+  const r = await fetch(yol, { ...secenek, headers: basliklar });
+  if (!r.ok) {
+    let detay = r.statusText;
+    try { const p = await r.json(); detay = p.detail || p.title || detay; } catch { }
+    throw new Error(detay);
+  }
+  return r.status === 204 ? null : r.json();
+}
+
+function bildir(m) { const e = $("#mesaj"); e.textContent = m; e.style.display = "block"; clearTimeout(bildir.t); bildir.t = setTimeout(() => e.style.display = "none", 4000); }
+
+async function basla() {
+  kullanicilar = await (await fetch("/api/gelistirme/kullanicilar")).json();
+  const sec = $("#kullanici");
+  sec.innerHTML = kullanicilar.map(k => `<option value="${k.id}">${esc(k.adSoyad)} – ${k.rol}</option>`).join("");
+  const kayitli = kimlik();
+  if (kayitli && kullanicilar.some(k => k.id === kayitli)) sec.value = kayitli;
+  sec.onchange = () => { kimlikKaydet(sec.value); detayKapat(); yukle(); };
+  $("#yenileBtn").onclick = yukle;
+  $("#fDurum").onchange = yukle;
+  $("#fArama").oninput = () => { clearTimeout(basla.t); basla.t = setTimeout(yukle, 300); };
+  $("#bildirimBtn").onclick = bildirimleriGoster;
+  $("#yeniBtn").onclick = yeniYaziAc;
+  $("#yeniForm").onsubmit = yeniYaziKaydet;
+  await yukle();
+  const m = location.hash.match(/yazi=([0-9a-f-]+)/);
+  if (m) detayAc(m[1]);
+}
+
+async function yukle() {
+  try {
+    ben = await api("/api/ben");
+    projeler = await api("/api/projeler");
+    $("#yeniBtn").style.display = ben.rol === "Personel" ? "none" : "";
+    const d = $("#fDurum").value, a = $("#fArama").value.trim();
+    const q = new URLSearchParams();
+    if (d === "acik") q.set("sadeceAcik", "true"); else if (d) q.set("durum", d);
+    if (a) q.set("arama", a);
+    yazilar = await api("/api/yazilar?" + q);
+    listeCiz();
+    kartlariCiz();
+    const b = await api("/api/bildirimlerim?gun=7");
+    $("#bildirimSayi").textContent = b.length;
+    $("#bildirimler").innerHTML = b.length ? b.map(x => `<div class="liste"><div><a href="#yazi=${x.yaziId}" onclick="detayAc('${x.yaziId}');$('#bildirimler').style.display='none'">${esc(x.mesaj)}</a><div class="kucuk">${tarihSaat(x.zaman)}</div></div></div>`).join("") : "<div class='kucuk'>Son 7 günde bildirim yok.</div>";
+  } catch (e) { bildir(e.message); }
+}
+
+function kartlariCiz() {
+  const acik = yazilar.filter(y => y.durum !== "Gonderildi");
+  const say = f => acik.filter(f).length;
+  const kartlar = [
+    ["Atama bekleyen", say(y => y.durum === "AtamaBekliyor"), "AtamaBekliyor"],
+    ["Taslak / revizyon", say(y => y.durum === "TaslakHazirlaniyor" || y.durum === "RevizyonBekleniyor"), "TaslakHazirlaniyor"],
+    ["Hukukta", say(y => y.durum === "HukukIncelemesinde"), "HukukIncelemesinde"],
+    ["Gönderim bekleyen", say(y => y.durum === "HukukOnayladi"), "HukukOnayladi"],
+    ["Süre istisnası", say(y => y.durum === "IstisnaHukukIncelemesinde" || y.durum === "EkSureYanitiBekleniyor"), "IstisnaHukukIncelemesinde"],
+    ["Kritik / gecikmiş", say(y => y.aciliyet === "Kritik" || y.aciliyet === "Gecikti"), "acik"],
+  ];
+  $("#kartlar").innerHTML = kartlar.map(([ad, n, f]) => `<div class="kart" data-f="${f}"><b>${n}</b><span>${ad}</span></div>`).join("");
+  document.querySelectorAll(".kart").forEach(k => k.onclick = () => { $("#fDurum").value = k.dataset.f; yukle(); });
+}
+
+function listeCiz() {
+  $("#sayac").textContent = `${yazilar.length} yazı`;
+  const simdi = new Date();
+  $("#liste").innerHTML = yazilar.map(y => {
+    const tGecti = new Date(y.taslakSonTarihi) < simdi && ["AtamaBekliyor", "TaslakHazirlaniyor"].includes(y.durum);
+    const hGecti = new Date(y.hukukSonTarihi) < simdi && ["AtamaBekliyor", "TaslakHazirlaniyor", "RevizyonBekleniyor", "HukukIncelemesinde"].includes(y.durum);
+    const kalan = y.durum === "Gonderildi" ? "" : y.kalanGun < 0 ? `<span class="gecikti">${-y.kalanGun} gün gecikti</span>` : `${y.kalanGun} gün kaldı`;
+    return `<tr class="satir" data-id="${y.id}">
+      <td class="ac ${y.aciliyet}" title="${y.aciliyet}"></td>
+      <td><b>${esc(y.konu)}</b> ${y.sureTeyitGerekli ? '<span class="etiket uyari">süre teyidi</span>' : ""} ${y.sureUzatildi ? '<span class="etiket">süre uzatıldı</span>' : ""}
+          <div class="ozet">${esc(y.ozet.length > 220 ? y.ozet.slice(0, 220) + "…" : y.ozet)}</div></td>
+      <td class="gizle-mobil">${esc(y.gonderenIdare)}<div class="kucuk">${KAYNAK[y.kaynak]} · ${esc(y.gelenSayi || "")}</div><div class="kucuk">${esc(y.projeAdi || "⚠ Proje eşleşmedi")}</div></td>
+      <td><span class="etiket ${DURUM_ETIKET[y.durum]}">${esc(y.durumAdi)}</span></td>
+      <td>${esc(y.sorumluAdi || "–")}</td>
+      <td class="gizle-mobil ${tGecti ? "gecikti" : ""}">${tarihSaat(y.taslakSonTarihi)}</td>
+      <td class="gizle-mobil ${hGecti ? "gecikti" : ""}">${tarihSaat(y.hukukSonTarihi)}</td>
+      <td><b>${gun(y.cevapSonGunu)}</b><div class="kucuk">${kalan}</div></td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="8" class="kucuk">Kayıt yok.</td></tr>`;
+  document.querySelectorAll("tr.satir").forEach(tr => tr.onclick = () => detayAc(tr.dataset.id));
+}
+
+function detayKapat() { $("#detay").style.display = "none"; acikYazi = null; history.replaceState(null, "", location.pathname); }
+
+async function detayAc(id) {
+  try {
+    acikYazi = await api(`/api/yazilar/${id}`);
+    history.replaceState(null, "", `#yazi=${id}`);
+    detayCiz();
+  } catch (e) { bildir(e.message); }
+}
+
+function detayCiz() {
+  const d = acikYazi, o = d.ozet, simdi = new Date();
+  const asama = (ad, t) => `<div class="${new Date(t) < simdi ? (o.durum === "Gonderildi" ? "gecti" : "asildi") : ""}"><b>${ad}</b><br>${tarihSaat(t)}</div>`;
+  $("#detay").innerHTML = `
+    <button class="kapat" onclick="detayKapat()">✕</button>
+    <h2>${esc(o.konu)}</h2>
+    <div><span class="etiket ${DURUM_ETIKET[o.durum]}">${esc(o.durumAdi)}</span> <span class="kucuk">${KAYNAK[o.kaynak]} · analiz: ${d.analizKaynagi}</span></div>
+    <div class="zaman">
+      <div class="gecti"><b>Tebliğ</b><br>${tarihSaat(o.tebligTarihi)}</div>
+      ${asama("Taslak (%50)", o.taslakSonTarihi)}
+      ${asama("Hukuk (%75)", o.hukukSonTarihi)}
+      ${asama("Cevap son günü", o.cevapSonGunu + "T23:59:59+03:00")}
+    </div>
+    ${o.sureTeyitGerekli ? `<div class="islem" style="border-color:#fedf89;background:#fffaeb">⚠ ${esc(d.sureAciklamasi)}</div>` : ""}
+    <h3>Özet</h3><div>${esc(o.ozet)}</div>
+    <h3>Bilgiler</h3>
+    <div class="izgara">
+      <div>Gönderen idare</div><div>${esc(o.gonderenIdare)}</div>
+      <div>Gelen sayı / tarih</div><div>${esc(o.gelenSayi || "–")} / ${gun(d.yaziTarihi)}</div>
+      <div>Proje</div><div>${esc(o.projeAdi || "Eşleşmedi")}</div>
+      <div>Sorumlu</div><div>${esc(o.sorumluAdi || "Atanmadı")}</div>
+      <div>Süre tespiti</div><div>${esc(d.sureAciklamasi || "–")}</div>
+      ${o.sureUzatildi ? `<div>İlk cevap son günü</div><div>${gun(o.ilkCevapSonGunu)}</div>` : ""}
+      ${d.gonderimTarihi ? `<div>Gönderim</div><div>${tarihSaat(d.gonderimTarihi)} · ${esc(d.gidenSayi || "")} · ${esc(d.gonderimKanali || "")}</div>` : ""}
+    </div>
+    <h3>İşlemler</h3>
+    <div id="islemler">${islemFormlari(d)}</div>
+    ${d.taslaklar.length ? `<h3>Taslaklar</h3>${d.taslaklar.map(t => `<div class="kucuk">v${t.versiyonNo} · ${esc(t.hazirlayan)} (${t.hazirlayanRol}) · ${tarihSaat(t.tarih)}</div><pre>${esc(t.icerik)}</pre>`).join("")}` : ""}
+    ${d.hukukIncelemeleri.length ? `<h3>Hukuk incelemeleri</h3><div class="liste">${d.hukukIncelemeleri.map(i => `<div><b>${i.karar}</b> (v${i.taslakVersiyonNo}) · ${esc(i.hukukcu)} · ${tarihSaat(i.tarih)}<div>${esc(i.aciklama || "")}</div></div>`).join("")}</div>` : ""}
+    ${d.istisnalar.length ? `<h3>Süre istisnaları</h3><div class="liste">${d.istisnalar.map(i => `<div><b>${i.durum}</b>${i.cozum ? " · " + i.cozum : ""} · ${esc(i.bildiren)} · ${tarihSaat(i.bildirimTarihi)}
+        <div>Neden: ${esc(i.neden)}${i.onerilenTarih ? ` (önerilen: ${gun(i.onerilenTarih)})` : ""}</div>
+        ${i.hukukAciklamasi ? `<div>Hukuk: ${esc(i.hukukAciklamasi)}</div>` : ""}
+        ${i.hedefTarih ? `<div>${i.cozum === "EkSureTalebi" ? "Talep edilen" : "Taahhüt edilen"} tarih: ${gun(i.hedefTarih)}${i.idareYaniti ? ` · İdare yanıtı: <b>${i.idareYaniti}</b> ${i.idareninVerdigiTarih ? gun(i.idareninVerdigiTarih) : ""}` : ""}</div>` : ""}
+        ${i.idareyeYaziMetni ? `<details><summary class="kucuk">İdareye yazı</summary><pre>${esc(i.idareyeYaziMetni)}</pre></details>` : ""}</div>`).join("")}</div>` : ""}
+    ${d.ekler.length ? `<h3>Ekler</h3>${d.ekler.map(e => `<div><a href="#" onclick="ekIndir('${e.id}','${esc(e.dosyaAdi)}');return false">${esc(e.dosyaAdi)}</a> <span class="kucuk">${Math.round(e.boyut / 1024)} KB</span></div>`).join("")}` : ""}
+    <h3>Yazı metni</h3><details><summary class="kucuk">Göster</summary><pre>${esc(d.metin)}</pre></details>
+    <h3>Hatırlatmalar</h3><div class="liste">${d.hatirlatmalar.map(h => `<div class="kucuk">${h.gonderimZamani ? "✓" : "⏰"} ${tarihSaat(h.zaman)} → ${esc(h.alici)}: ${esc(h.mesaj)}</div>`).join("") || "<div class='kucuk'>Yok</div>"}</div>
+    <h3>Hareketler</h3><div class="liste">${d.hareketler.map(h => `<div><span class="kucuk">${tarihSaat(h.tarih)} · ${esc(h.kullanici || "Sistem")}</span><br>${esc(h.islem)}${h.aciklama ? ` <span class="kucuk">– ${esc(h.aciklama)}</span>` : ""}</div>`).join("")}</div>`;
+  $("#detay").style.display = "block";
+}
+
+function islemFormlari(d) {
+  const i = new Set(d.yapilabilirIslemler), o = d.ozet, f = [];
+  const guncelTaslak = d.taslaklar[0]?.icerik || "";
+  if (!i.size) return `<div class="kucuk">Bu aşamada sizin için bekleyen işlem yok.</div>`;
+  if (i.has("SorumluAta")) f.push(`<div class="islem"><b>Sorumlu ata</b><label>Proje personeli</label><select id="sorumluSec"><option value="">Yükleniyor…</option></select> <button class="ana" onclick="islem('sorumlu-ata',{sorumluId:$('#sorumluSec').value})">Ata</button></div>`);
+  if (i.has("TaslakKaydet")) f.push(`<div class="islem"><b>Cevap taslağı</b> <span class="kucuk">Taslak son tarihi: ${tarihSaat(o.taslakSonTarihi)}</span>
+      <textarea id="taslakMetni" rows="10">${esc(guncelTaslak)}</textarea>
+      <button onclick="islem('taslak',{icerik:$('#taslakMetni').value,hukukaGonder:false})">Kaydet</button>
+      <button class="ana" onclick="islem('taslak',{icerik:$('#taslakMetni').value,hukukaGonder:true})">Kaydet ve hukuka gönder</button></div>`);
+  if (i.has("HukukOnayla")) f.push(`<div class="islem"><b>Hukuk incelemesi</b> <span class="kucuk">Hukuk son tarihi: ${tarihSaat(o.hukukSonTarihi)}</span>
+      <label>Revize metin (yalnızca "Revize et ve onayla" için)</label><textarea id="revizeMetni" rows="10">${esc(guncelTaslak)}</textarea>
+      <label>Açıklama / revizyon talebi</label><input id="hukukAciklama" style="width:100%">
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="ana" onclick="islem('hukuk-onay',{aciklama:$('#hukukAciklama').value})">Onayla</button>
+        <button onclick="islem('revizyon-talebi',{aciklama:$('#hukukAciklama').value})">Revizyon talep et</button>
+        <button onclick="islem('revize-et-onayla',{icerik:$('#revizeMetni').value,aciklama:$('#hukukAciklama').value})">Revize et ve onayla</button>
+      </div></div>`);
+  if (i.has("IdareyeGonder")) f.push(`<div class="islem"><b>İdareye gönder</b> <span class="kucuk">Hukuk onaylı metin v${d.taslaklar[0]?.versiyonNo}</span>
+      <label>Giden sayı</label><input id="gidenSayi"> <label>Kanal</label><select id="kanal"><option>KEP</option><option>UETS</option><option>Elden</option><option>Posta</option><option>E-posta</option></select>
+      <div style="margin-top:8px"><button class="ana" onclick="islem('idareye-gonder',{gidenSayi:$('#gidenSayi').value,kanal:$('#kanal').value})">Gönderildi olarak işaretle</button></div></div>`);
+  if (i.has("IstisnaBildir")) f.push(`<details class="islem"><summary><b>Süresinde cevap verilemiyor</b></summary>
+      <label>Neden (zorunlu)</label><textarea id="istisnaNeden" rows="3"></textarea>
+      <label>Cevap verilebilecek tarih önerisi</label><input id="istisnaTarih" type="date">
+      <div style="margin-top:8px"><button class="tehlike" onclick="islem('istisna',{neden:$('#istisnaNeden').value,onerilenTarih:$('#istisnaTarih').value||null})">Hukuka bildir</button></div></details>`);
+  if (i.has("EkSureTalepEt")) {
+    const ist = d.istisnalar.find(x => x.durum === "HukukIncelemesinde");
+    f.push(`<div class="islem"><b>Süre istisnası – hukuk kararı</b>
+      <div class="kucuk">Neden: ${esc(ist?.neden)} ${ist?.onerilenTarih ? "· Önerilen tarih: " + gun(ist.onerilenTarih) : ""}</div>
+      <label>Hukuk açıklaması</label><input id="istAciklama" style="width:100%">
+      <label>İdareye yazılacak metin (ek süre talebi veya gecikme gerekçesi)</label><textarea id="istMetin" rows="6"></textarea>
+      <label>Tarih (talep edilen ek süre / cevabın verileceği taahhüt tarihi)</label><input id="istTarih" type="date" value="${ist?.onerilenTarih || ""}">
+      <label>Giden sayı</label><input id="istSayi">
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        <button class="ana" onclick="islem('ek-sure-talebi',{talepYazisiMetni:$('#istMetin').value,talepEdilenTarih:$('#istTarih').value,gidenSayi:$('#istSayi').value,aciklama:$('#istAciklama').value})">Ek süre talep et</button>
+        <button class="ana" onclick="islem('gecikme-bildirimi',{gerekceYazisiMetni:$('#istMetin').value,taahhutTarihi:$('#istTarih').value,gidenSayi:$('#istSayi').value,aciklama:$('#istAciklama').value})">Gerekçeli gecikme bildir</button>
+        <button class="tehlike" onclick="islem('istisna-reddet',{aciklama:$('#istAciklama').value})">Nedeni uygun bulma</button>
+      </div></div>`);
+  }
+  if (i.has("EkSureYanitiKaydet")) f.push(`<div class="islem"><b>İdarenin ek süre yanıtı</b>
+      <label>İdarenin verdiği tarih (kabulde)</label><input id="ekSureTarih" type="date">
+      <div style="margin-top:8px;display:flex;gap:6px"><button class="ana" onclick="islem('ek-sure-yaniti',{yanit:'Kabul',verilenTarih:$('#ekSureTarih').value||null})">Kabul edildi</button>
+      <button class="tehlike" onclick="islem('ek-sure-yaniti',{yanit:'Ret'})">Reddedildi</button></div></div>`);
+  if (i.has("BilgiDuzelt")) f.push(`<details class="islem" ${o.sureTeyitGerekli ? "open" : ""}><summary><b>Bilgileri düzelt / teyit et</b></summary>
+      <label>Konu</label><input id="dKonu" style="width:100%" value="${esc(o.konu)}">
+      <label>Özet</label><textarea id="dOzet" rows="3">${esc(o.ozet)}</textarea>
+      <label>Cevap son günü</label><input id="dSonGun" type="date" value="${o.cevapSonGunu}" ${o.sureUzatildi ? "disabled" : ""}>
+      <div style="margin-top:8px"><button class="ana" onclick="islem('bilgi-duzelt',{konu:$('#dKonu').value,ozet:$('#dOzet').value,cevapSonGunu:$('#dSonGun').disabled?null:$('#dSonGun').value})">Kaydet / teyit et</button></div></details>`);
+  if (i.has("ProjeAta")) f.push(`<div class="islem"><b>Proje eşleştir</b> <select id="projeSec">${projeler.map(p => `<option value="${p.id}">${esc(p.kod)} – ${esc(p.ad)}</option>`).join("")}</select> <button class="ana" onclick="islem('proje-ata',{projeId:$('#projeSec').value})">Kaydet</button></div>`);
+  if (i.has("SorumluAta")) setTimeout(sorumlulariYukle, 0);
+  return f.join("");
+}
+
+async function sorumlulariYukle() {
+  const o = acikYazi.ozet;
+  const liste = (await api(`/api/kullanicilar?projeId=${o.projeId}`)).filter(k => k.rol === "Personel" || k.rol === "ProjeMuduru");
+  const sec = $("#sorumluSec");
+  if (sec) sec.innerHTML = liste.map(k => `<option value="${k.id}" ${k.id === o.sorumluId ? "selected" : ""}>${esc(k.adSoyad)}</option>`).join("");
+}
+
+async function islem(yol, govde) {
+  try {
+    acikYazi = await api(`/api/yazilar/${acikYazi.ozet.id}/${yol}`, { method: "POST", body: JSON.stringify({ ...govde, surumNo: acikYazi.ozet.surumNo }) });
+    detayCiz();
+    bildir("İşlem kaydedildi.");
+    yukle();
+  } catch (e) { bildir(e.message); }
+}
+
+async function ekIndir(ekId, ad) {
+  const r = await fetch(`/api/yazilar/${acikYazi.ozet.id}/ekler/${ekId}`, { headers: { "X-Kullanici-Id": $("#kullanici").value } });
+  if (!r.ok) return bildir("Ek indirilemedi.");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(await r.blob()); a.download = ad; a.click();
+}
+
+function bildirimleriGoster() { const b = $("#bildirimler"); b.style.display = b.style.display === "block" ? "none" : "block"; }
+
+function yeniYaziAc() {
+  const f = $("#yeniForm");
+  f.reset();
+  f.projeId.innerHTML = projeler.map(p => `<option value="${p.id}">${esc(p.kod)} – ${esc(p.ad)}</option>`).join("");
+  $("#projeAlani").style.display = ben.rol === "ProjeMuduru" ? "none" : "";
+  $("#yeniDialog").showModal();
+}
+
+async function yeniYaziKaydet(ev) {
+  if (ev.submitter?.value !== "kaydet") return;
+  ev.preventDefault();
+  const f = ev.target, fd = new FormData();
+  for (const ad of ["kaynak", "projeId", "gonderenIdare", "gelenSayi", "konu", "cevapSonGunu", "metin"]) if (f[ad].value) fd.append(ad, f[ad].value);
+  if (f.tebligTarihi.value) fd.append("tebligTarihi", new Date(f.tebligTarihi.value).toISOString());
+  for (const d of f.dosyalar.files) fd.append("dosyalar", d);
+  try {
+    const y = await api("/api/yazilar/dosyali", { method: "POST", body: fd });
+    $("#yeniDialog").close();
+    bildir("Yazı kaydedildi.");
+    await yukle();
+    detayAc(y.ozet.id);
+  } catch (e) { bildir(e.message); }
+}
+
+basla();
+</script>
+</body>
+</html>
